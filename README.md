@@ -1,7 +1,7 @@
 [![CI](https://github.com/openrijal/llmusage/actions/workflows/ci.yml/badge.svg)](https://github.com/openrijal/llmusage/actions/workflows/ci.yml)
 [![Crates.io](https://img.shields.io/crates/v/llmusage)](https://crates.io/crates/llmusage)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Downloads](https://img.shields.io/crates/d/llmusage)](https://crates.io/crates/llmusage)
+[![Downloads](https://img.shields.io/crates/d/llmusage?label=downloads)](https://crates.io/crates/llmusage)
 
 # llmusage
 
