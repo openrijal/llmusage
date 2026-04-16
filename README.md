@@ -1,3 +1,8 @@
+[![CI](https://github.com/openrijal/llmusage/actions/workflows/ci.yml/badge.svg)](https://github.com/openrijal/llmusage/actions/workflows/ci.yml)
+[![Crates.io](https://img.shields.io/crates/v/llmusage)](https://crates.io/crates/llmusage)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Downloads](https://img.shields.io/crates/d/llmusage)](https://crates.io/crates/llmusage)
+
 # llmusage
 
 Track token usage and costs across AI providers and coding tools from a single CLI.
@@ -21,11 +26,27 @@ llmusage collects usage data from multiple AI sources — API dashboards, local 
 
 ## Installation
 
+### Prerequisites
+
+You need the [Rust toolchain](https://rustup.rs/) installed for source-based installation methods. No other system dependencies are required — SQLite is bundled.
+
+### From crates.io (recommended)
+
 ```bash
 cargo install llmusage
 ```
 
-Single static binary, no runtime dependencies (SQLite is bundled).
+### From Homebrew (macOS)
+
+```bash
+brew install openrijal/tap/llmusage
+```
+
+### Pre-built binaries
+
+Download the latest binary for your platform from [GitHub Releases](https://github.com/openrijal/llmusage/releases).
+
+Available for: macOS (Intel & Apple Silicon), Linux (x86_64, ARM64).
 
 ### Build from source
 
@@ -33,7 +54,19 @@ Single static binary, no runtime dependencies (SQLite is bundled).
 git clone https://github.com/openrijal/llmusage.git
 cd llmusage
 cargo build --release
-# binary at ./target/release/llmusage
+# Binary at ./target/release/llmusage
+```
+
+Or install directly from the local checkout:
+
+```bash
+cargo install --path .
+```
+
+Verify the installation:
+
+```bash
+llmusage --version
 ```
 
 ## Quick start
@@ -150,6 +183,20 @@ TOML config at platform-specific location:
 | `gemini_api_key` | Gemini API key | None |
 | `ollama_host` | Ollama server URL | `http://localhost:11434` |
 | `claude_code_enabled` | Parse Claude Code session logs | `true` |
+
+## Uninstall
+
+```bash
+# If installed via cargo
+cargo uninstall llmusage
+
+# If installed via Homebrew
+brew uninstall llmusage
+```
+
+To remove all data and configuration:
+- **macOS**: `rm -rf ~/Library/Application\ Support/llmusage`
+- **Linux**: `rm -rf ~/.config/llmusage`
 
 ## Screenshots
 

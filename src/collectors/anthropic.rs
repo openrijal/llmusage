@@ -101,9 +101,7 @@ impl Collector for AnthropicCollector {
                     cache_write_tokens: b.cache_creation_input_tokens,
                     cost_usd: cost,
                     session_id: None,
-                    recorded_at: b
-                        .date
-                        .unwrap_or_else(|| now.format("%Y-%m-%d").to_string()),
+                    recorded_at: b.date.unwrap_or_else(|| now.format("%Y-%m-%d").to_string()),
                     collected_at: collected_at.clone(),
                     metadata: None,
                 }

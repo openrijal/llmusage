@@ -84,8 +84,10 @@ impl Collector for OpenCodeCollector {
             return Ok(vec![]);
         }
 
-        let conn =
-            rusqlite::Connection::open_with_flags(&self.db_path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+        let conn = rusqlite::Connection::open_with_flags(
+            &self.db_path,
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+        )?;
 
         let collected_at = Utc::now().to_rfc3339();
         let mut records = Vec::new();
@@ -117,9 +119,7 @@ impl Collector for OpenCodeCollector {
                     continue;
                 }
 
-                let model = msg
-                    .model_id
-                    .unwrap_or_else(|| "unknown".to_string());
+                let model = msg.model_id.unwrap_or_else(|| "unknown".to_string());
                 let output = tokens.output + tokens.reasoning;
                 let (cache_read, cache_write) = tokens
                     .cache
@@ -150,7 +150,9 @@ impl Collector for OpenCodeCollector {
                     session_id: Some(session_id.clone()),
                     recorded_at,
                     collected_at: collected_at.clone(),
-                    metadata: msg.provider_id.map(|p| format!("{{\"provider\": \"{}\"}}", p)),
+                    metadata: msg
+                        .provider_id
+                        .map(|p| format!("{{\"provider\": \"{}\"}}", p)),
                 });
             }
         }

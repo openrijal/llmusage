@@ -141,13 +141,9 @@ impl Collector for ClaudeCodeCollector {
                                         cache_write_tokens: usage.cache_creation_input_tokens,
                                         cost_usd: cost,
                                         session_id: entry.session_id.clone(),
-                                        recorded_at: entry.timestamp.clone().unwrap_or_else(
-                                            || {
-                                                Utc::now()
-                                                    .format("%Y-%m-%dT%H:%M:%S")
-                                                    .to_string()
-                                            },
-                                        ),
+                                        recorded_at: entry.timestamp.clone().unwrap_or_else(|| {
+                                            Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string()
+                                        }),
                                         collected_at: collected_at.clone(),
                                         metadata: None,
                                     });
@@ -170,9 +166,7 @@ impl Collector for ClaudeCodeCollector {
                                     if !line.contains("\"usage\"") {
                                         continue;
                                     }
-                                    if let Ok(entry) =
-                                        serde_json::from_str::<LogEntry>(line)
-                                    {
+                                    if let Ok(entry) = serde_json::from_str::<LogEntry>(line) {
                                         if entry.r#type.as_deref() != Some("assistant") {
                                             continue;
                                         }
@@ -183,10 +177,8 @@ impl Collector for ClaudeCodeCollector {
                                                 {
                                                     continue;
                                                 }
-                                                let model = msg
-                                                    .model
-                                                    .clone()
-                                                    .unwrap_or_else(|| {
+                                                let model =
+                                                    msg.model.clone().unwrap_or_else(|| {
                                                         "claude-unknown".to_string()
                                                     });
                                                 let cost = costs::calculate_cost(
