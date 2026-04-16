@@ -1,0 +1,28 @@
+[package]
+name = "llmusage"
+version = "0.1.0"
+edition = "2021"
+description = "Track token usage and costs across AI providers"
+license = "MIT"
+repository = "https://github.com/openrijal/llmusage"
+keywords = ["ai", "tokens", "usage", "cli", "llm"]
+categories = ["command-line-utilities"]
+
+[[bin]]
+name = "llmusage"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+async-trait = "0.1"
+chrono = { version = "0.4", features = ["serde"] }
+clap = { version = "4", features = ["derive"] }
+colored = "2"
+dirs = "5"
+reqwest = { version = "0.12", features = ["json"] }
+rusqlite = { version = "0.31", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tabled = "0.16"
+tokio = { version = "1", features = ["full"] }
+toml = "0.8"
