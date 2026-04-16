@@ -47,9 +47,11 @@ pub fn get_collectors(
     }
 
     if should_include("ollama") {
-        if let Some(ref host) = cfg.ollama_host {
-            collectors.push(Box::new(ollama::OllamaCollector::new(host.clone())));
-        }
+        let host = cfg
+            .ollama_host
+            .clone()
+            .unwrap_or_else(|| "http://localhost:11434".to_string());
+        collectors.push(Box::new(ollama::OllamaCollector::new(host)));
     }
 
     // Local log-based collectors (auto-detect if installed)

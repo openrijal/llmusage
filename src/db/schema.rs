@@ -23,7 +23,7 @@ pub fn initialize(conn: &Connection) -> Result<()> {
         CREATE INDEX IF NOT EXISTS idx_recorded_at ON usage_records(recorded_at);
         CREATE INDEX IF NOT EXISTS idx_model ON usage_records(model);
         CREATE INDEX IF NOT EXISTS idx_provider_recorded ON usage_records(provider, recorded_at);
-        CREATE UNIQUE INDEX IF NOT EXISTS idx_dedup ON usage_records(provider, model, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, recorded_at, session_id);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_dedup ON usage_records(provider, model, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, recorded_at, COALESCE(session_id, ''));
         ",
     )?;
     Ok(())

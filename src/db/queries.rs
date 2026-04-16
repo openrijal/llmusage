@@ -108,7 +108,14 @@ pub fn query_detail(
     }
     if let Some(u) = until {
         sql.push_str(&format!(" AND recorded_at <= ?{}", param_values.len() + 1));
-        param_values.push(Box::new(u.to_string()));
+        // When the user passes a bare date (YYYY-MM-DD), append end-of-day so
+        // timestamped records on that date are included.
+        let until_val = if u.len() == 10 && u.chars().nth(4) == Some('-') && u.chars().nth(7) == Some('-') {
+            format!("{}T23:59:59", u)
+        } else {
+            u.to_string()
+        };
+        param_values.push(Box::new(until_val));
     }
 
     sql.push_str(&format!(
