@@ -3,7 +3,7 @@ use rusqlite::{params, Connection};
 
 use std::collections::BTreeMap;
 
-use crate::models::{DailyRow, SummaryRow, UsageRecord};
+use crate::models::{DailyRow, ModelEntry, SummaryRow, UsageRecord};
 
 pub fn insert_record(conn: &Connection, record: &UsageRecord) -> Result<()> {
     conn.execute(
@@ -191,7 +191,7 @@ fn query_grouped(
     provider: Option<&str>,
 ) -> Result<Vec<DailyRow>> {
     let mut sql = format!(
-        "SELECT {group_expr} as period, model,
+        "SELECT {group_expr} as period, provider, model,
          SUM(input_tokens) as total_input,
          SUM(output_tokens) as total_output,
          COALESCE(SUM(cost_usd), 0) as total_cost
@@ -207,7 +207,7 @@ fn query_grouped(
         param_values.push(Box::new(p.to_string()));
     }
 
-    sql.push_str(" GROUP BY period, model ORDER BY period ASC, total_cost DESC");
+    sql.push_str(" GROUP BY period, provider, model ORDER BY period ASC, provider ASC, total_cost DESC");
 
     let params_refs: Vec<&dyn rusqlite::types::ToSql> =
         param_values.iter().map(|p| p.as_ref()).collect();
@@ -219,24 +219,33 @@ fn query_grouped(
         Ok((
             row.get::<_, String>(0)?,
             row.get::<_, String>(1)?,
-            row.get::<_, i64>(2)?,
+            row.get::<_, String>(2)?,
             row.get::<_, i64>(3)?,
-            row.get::<_, f64>(4)?,
+            row.get::<_, i64>(4)?,
+            row.get::<_, f64>(5)?,
         ))
     })?;
 
     for row in rows {
-        let (period, model, input, output, cost) = row?;
+        let (period, prov, model, input, output, cost) = row?;
         let entry = map.entry(period.clone()).or_insert_with(|| DailyRow {
             date: period,
             models: Vec::new(),
+            model_entries: Vec::new(),
             total_input: 0,
             total_output: 0,
             total_cost: 0.0,
         });
         if !entry.models.contains(&model) {
-            entry.models.push(model);
+            entry.models.push(model.clone());
         }
+        entry.model_entries.push(ModelEntry {
+            provider: prov,
+            model,
+            input_tokens: input,
+            output_tokens: output,
+            cost,
+        });
         entry.total_input += input;
         entry.total_output += output;
         entry.total_cost += cost;

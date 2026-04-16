@@ -48,6 +48,9 @@ enum Commands {
         /// Output as JSON
         #[arg(long)]
         json: bool,
+        /// Show all models including those with zero tokens
+        #[arg(long)]
+        all: bool,
     },
     /// Show weekly usage breakdown
     Weekly {
@@ -60,6 +63,9 @@ enum Commands {
         /// Output as JSON
         #[arg(long)]
         json: bool,
+        /// Show all models including those with zero tokens
+        #[arg(long)]
+        all: bool,
     },
     /// Show monthly usage breakdown
     Monthly {
@@ -72,6 +78,9 @@ enum Commands {
         /// Output as JSON
         #[arg(long)]
         json: bool,
+        /// Show all models including those with zero tokens
+        #[arg(long)]
+        all: bool,
     },
     /// Show detailed usage breakdown
     Detail {
@@ -143,22 +152,25 @@ async fn main() -> Result<()> {
             days,
             provider,
             json,
+            all,
         } => {
-            cmd_daily(&db, days, provider.as_deref(), json)?;
+            cmd_daily(&db, days, provider.as_deref(), json, all)?;
         }
         Commands::Weekly {
             weeks,
             provider,
             json,
+            all,
         } => {
-            cmd_weekly(&db, weeks, provider.as_deref(), json)?;
+            cmd_weekly(&db, weeks, provider.as_deref(), json, all)?;
         }
         Commands::Monthly {
             months,
             provider,
             json,
+            all,
         } => {
-            cmd_monthly(&db, months, provider.as_deref(), json)?;
+            cmd_monthly(&db, months, provider.as_deref(), json, all)?;
         }
         Commands::Detail {
             model,
@@ -259,32 +271,32 @@ fn cmd_summary(
     Ok(())
 }
 
-fn cmd_daily(db: &db::Database, days: u32, provider: Option<&str>, json: bool) -> Result<()> {
+fn cmd_daily(db: &db::Database, days: u32, provider: Option<&str>, json: bool, show_all: bool) -> Result<()> {
     let rows = db.query_daily(days, provider)?;
     if json {
         println!("{}", serde_json::to_string_pretty(&rows)?);
     } else {
-        display::print_daily(&rows, "Token Usage Report — Daily");
+        display::print_daily(&rows, "Token Usage Report — Daily", show_all);
     }
     Ok(())
 }
 
-fn cmd_weekly(db: &db::Database, weeks: u32, provider: Option<&str>, json: bool) -> Result<()> {
+fn cmd_weekly(db: &db::Database, weeks: u32, provider: Option<&str>, json: bool, show_all: bool) -> Result<()> {
     let rows = db.query_weekly(weeks, provider)?;
     if json {
         println!("{}", serde_json::to_string_pretty(&rows)?);
     } else {
-        display::print_daily(&rows, "Token Usage Report — Weekly");
+        display::print_daily(&rows, "Token Usage Report — Weekly", show_all);
     }
     Ok(())
 }
 
-fn cmd_monthly(db: &db::Database, months: u32, provider: Option<&str>, json: bool) -> Result<()> {
+fn cmd_monthly(db: &db::Database, months: u32, provider: Option<&str>, json: bool, show_all: bool) -> Result<()> {
     let rows = db.query_monthly(months, provider)?;
     if json {
         println!("{}", serde_json::to_string_pretty(&rows)?);
     } else {
-        display::print_daily(&rows, "Token Usage Report — Monthly");
+        display::print_daily(&rows, "Token Usage Report — Monthly", show_all);
     }
     Ok(())
 }
