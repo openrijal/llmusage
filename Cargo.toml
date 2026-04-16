@@ -1,6 +1,6 @@
 [package]
 name = "llmusage"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "Track token usage and costs across AI providers"
 license = "MIT"
