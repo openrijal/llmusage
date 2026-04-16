@@ -119,7 +119,7 @@ fn build_period_rows(row: &DailyRow, show_all: bool) -> Vec<DisplayRow> {
     // Group model entries by provider, preserving order
     let mut by_provider: BTreeMap<String, Vec<&crate::models::ModelEntry>> = BTreeMap::new();
     for entry in &row.model_entries {
-        if !show_all && entry.input_tokens == 0 && entry.output_tokens == 0 {
+        if !show_all && entry.input_tokens == 0 && entry.output_tokens == 0 && entry.cost == 0.0 {
             continue;
         }
         by_provider
@@ -164,6 +164,35 @@ fn build_period_rows(row: &DailyRow, show_all: bool) -> Vec<DisplayRow> {
         }
     }
     rows
+}
+
+/// Filter DailyRow model_entries based on the --all flag.
+/// When show_all is false, entries with zero input, zero output, AND zero cost are removed.
+pub fn filter_daily_rows(rows: &[DailyRow], show_all: bool) -> Vec<DailyRow> {
+    if show_all {
+        return rows.to_vec();
+    }
+    rows.iter()
+        .map(|r| {
+            let filtered: Vec<_> = r.model_entries.iter()
+                .filter(|e| e.input_tokens != 0 || e.output_tokens != 0 || e.cost != 0.0)
+                .cloned()
+                .collect();
+            let models: Vec<String> = filtered.iter()
+                .map(|e| e.model.clone())
+                .collect::<std::collections::HashSet<_>>()
+                .into_iter()
+                .collect();
+            DailyRow {
+                date: r.date.clone(),
+                models,
+                model_entries: filtered,
+                total_input: r.total_input,
+                total_output: r.total_output,
+                total_cost: r.total_cost,
+            }
+        })
+        .collect()
 }
 
 pub fn print_daily(rows: &[DailyRow], title: &str, show_all: bool) {
@@ -257,16 +286,16 @@ pub fn print_daily(rows: &[DailyRow], title: &str, show_all: bool) {
     );
     // Dotted separator for between models within a provider
     let dotted = format!(
-        "│ {:<cw$}│ {:·>mw$}│ {:·>iw$}│ {:·>ow$}│ {:·>kw$}│",
+        "│ {:<cw$} │ {:·>mw$} │ {:·>iw$} │ {:·>ow$} │ {:·>kw$} │",
         "", "", "", "", "",
-        cw = col_date, mw = w_models - 1, iw = w_input, ow = w_output, kw = w_cost,
+        cw = col_date, mw = col_models, iw = col_input, ow = col_output, kw = col_cost,
     );
 
     println!("{}", top);
 
     // Header
     println!(
-        "│ {:<cw$}│ {:<mw$}│ {:>iw$} │ {:>ow$} │ {:>kw$} │",
+        "│ {:<cw$} │ {:<mw$} │ {:>iw$} │ {:>ow$} │ {:>kw$} │",
         "Date".cyan().bold(),
         "Models".cyan().bold(),
         "Input".cyan().bold(),
@@ -321,7 +350,7 @@ pub fn print_daily(rows: &[DailyRow], title: &str, show_all: bool) {
             };
 
             println!(
-                "│ {:<cw$}│ {}│ {} │ {} │ {} │",
+                "│ {:<cw$} │ {} │ {} │ {} │ {} │",
                 d,
                 model_display,
                 input_disp,
@@ -342,7 +371,7 @@ pub fn print_daily(rows: &[DailyRow], title: &str, show_all: bool) {
     let total_c = format!("{:>width$}", total_cost_str, width = col_cost);
 
     println!(
-        "│ {}│ {}│ {} │ {} │ {} │",
+        "│ {} │ {} │ {} │ {} │ {} │",
         total_label.yellow().bold(),
         empty_models,
         total_in.yellow(),

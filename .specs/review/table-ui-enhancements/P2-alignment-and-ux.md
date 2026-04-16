@@ -29,3 +29,20 @@ The daily/weekly/monthly table display had several UX issues:
    - Dotted separators (·) between models within a provider
 6. New `ModelEntry` struct with per-model cost, `DailyRow.model_entries` field
 7. Query updated to GROUP BY period, provider, model for per-model data
+
+## Codex Review Fixes (2026-04-15)
+
+Three issues identified by Codex review, all resolved:
+
+### P2: Table border alignment regression
+- **Issue**: Data rows used inconsistent padding (missing trailing space on Date/Models cells), causing vertical separators to drift left of the border lines.
+- **Root cause**: Format string `"│ {:<cw$}│ {}│ ..."` lacked the trailing space before `│` that the border widths (`col_* + 2`) accounted for.
+- **Fix**: Changed all data/header/totals/dotted format strings to use `"│ {:<cw$} │ {} │ ..."` with consistent 1-space padding on both sides of every cell.
+
+### P2: Zero-token filter discarding billable rows
+- **Issue**: Default filter dropped models with `input_tokens == 0 && output_tokens == 0`, even when `cost > 0` (e.g., cache read/write billing). This caused visible cost totals with no corresponding model rows.
+- **Fix**: Added `&& entry.cost == 0.0` to the filter condition in `build_period_rows`. Rows with non-zero cost are now always shown.
+
+### P3: `--all` flag ignored in JSON output
+- **Issue**: `show_all` was only passed to `display::print_daily` (text mode). JSON mode serialized unfiltered query results, making `--all` a no-op for `--json` consumers.
+- **Fix**: Added `display::filter_daily_rows()` public function. All three commands (`cmd_daily`, `cmd_weekly`, `cmd_monthly`) now call it before JSON serialization, ensuring consistent filtering across output formats.

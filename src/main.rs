@@ -274,7 +274,8 @@ fn cmd_summary(
 fn cmd_daily(db: &db::Database, days: u32, provider: Option<&str>, json: bool, show_all: bool) -> Result<()> {
     let rows = db.query_daily(days, provider)?;
     if json {
-        println!("{}", serde_json::to_string_pretty(&rows)?);
+        let filtered = display::filter_daily_rows(&rows, show_all);
+        println!("{}", serde_json::to_string_pretty(&filtered)?);
     } else {
         display::print_daily(&rows, "Token Usage Report — Daily", show_all);
     }
@@ -284,7 +285,8 @@ fn cmd_daily(db: &db::Database, days: u32, provider: Option<&str>, json: bool, s
 fn cmd_weekly(db: &db::Database, weeks: u32, provider: Option<&str>, json: bool, show_all: bool) -> Result<()> {
     let rows = db.query_weekly(weeks, provider)?;
     if json {
-        println!("{}", serde_json::to_string_pretty(&rows)?);
+        let filtered = display::filter_daily_rows(&rows, show_all);
+        println!("{}", serde_json::to_string_pretty(&filtered)?);
     } else {
         display::print_daily(&rows, "Token Usage Report — Weekly", show_all);
     }
@@ -294,7 +296,8 @@ fn cmd_weekly(db: &db::Database, weeks: u32, provider: Option<&str>, json: bool,
 fn cmd_monthly(db: &db::Database, months: u32, provider: Option<&str>, json: bool, show_all: bool) -> Result<()> {
     let rows = db.query_monthly(months, provider)?;
     if json {
-        println!("{}", serde_json::to_string_pretty(&rows)?);
+        let filtered = display::filter_daily_rows(&rows, show_all);
+        println!("{}", serde_json::to_string_pretty(&filtered)?);
     } else {
         display::print_daily(&rows, "Token Usage Report — Monthly", show_all);
     }
