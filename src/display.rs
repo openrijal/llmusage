@@ -1,5 +1,6 @@
 use crate::models::{DailyRow, ModelPricing, SummaryRow, UsageRecord};
 use colored::Colorize;
+use std::collections::BTreeMap;
 use tabled::{
     settings::{Alignment, Modify, Style, object::Columns},
     Table, Tabled,
@@ -92,7 +93,109 @@ pub fn print_summary(rows: &[SummaryRow]) {
     );
 }
 
-pub fn print_daily(rows: &[DailyRow], title: &str) {
+/// A display row: either a provider aggregate line or an individual model line.
+struct DisplayRow {
+    label: String,
+    input: String,
+    output: String,
+    cost: String,
+    kind: RowKind,
+}
+
+enum RowKind {
+    /// Provider aggregate row (shown in magenta with totals)
+    Provider,
+    /// Individual model row (indented, shows per-model values)
+    Model,
+    /// Dotted separator between models within a provider
+    DottedSep,
+}
+
+/// Build display rows for one period, grouped by provider.
+/// Provider rows show aggregate input/output/cost for all models under that provider.
+/// Model rows show per-model breakdown.
+/// When show_all is false, models with zero input AND zero output are filtered out.
+fn build_period_rows(row: &DailyRow, show_all: bool) -> Vec<DisplayRow> {
+    // Group model entries by provider, preserving order
+    let mut by_provider: BTreeMap<String, Vec<&crate::models::ModelEntry>> = BTreeMap::new();
+    for entry in &row.model_entries {
+        if !show_all && entry.input_tokens == 0 && entry.output_tokens == 0 && entry.cost == 0.0 {
+            continue;
+        }
+        by_provider
+            .entry(entry.provider.clone())
+            .or_default()
+            .push(entry);
+    }
+
+    let mut rows = Vec::new();
+    for (provider, models) in &by_provider {
+        // Provider aggregate
+        let prov_input: i64 = models.iter().map(|m| m.input_tokens).sum();
+        let prov_output: i64 = models.iter().map(|m| m.output_tokens).sum();
+        let prov_cost: f64 = models.iter().map(|m| m.cost).sum();
+
+        rows.push(DisplayRow {
+            label: provider.clone(),
+            input: format_tokens_comma(prov_input),
+            output: format_tokens_comma(prov_output),
+            cost: format_cost(prov_cost),
+            kind: RowKind::Provider,
+        });
+
+        for (i, entry) in models.iter().enumerate() {
+            // Dotted separator between models (not before first)
+            if i > 0 {
+                rows.push(DisplayRow {
+                    label: String::new(),
+                    input: String::new(),
+                    output: String::new(),
+                    cost: String::new(),
+                    kind: RowKind::DottedSep,
+                });
+            }
+            rows.push(DisplayRow {
+                label: format!("  {}", shorten_model(&entry.model)),
+                input: format_tokens_comma(entry.input_tokens),
+                output: format_tokens_comma(entry.output_tokens),
+                cost: format_cost(entry.cost),
+                kind: RowKind::Model,
+            });
+        }
+    }
+    rows
+}
+
+/// Filter DailyRow model_entries based on the --all flag.
+/// When show_all is false, entries with zero input, zero output, AND zero cost are removed.
+pub fn filter_daily_rows(rows: &[DailyRow], show_all: bool) -> Vec<DailyRow> {
+    if show_all {
+        return rows.to_vec();
+    }
+    rows.iter()
+        .map(|r| {
+            let filtered: Vec<_> = r.model_entries.iter()
+                .filter(|e| e.input_tokens != 0 || e.output_tokens != 0 || e.cost != 0.0)
+                .cloned()
+                .collect();
+            let models: Vec<String> = filtered.iter()
+                .map(|e| e.model.clone())
+                .collect::<std::collections::HashSet<_>>()
+                .into_iter()
+                .collect();
+            DailyRow {
+                date: r.date.clone(),
+                models,
+                model_entries: filtered,
+                total_input: r.total_input,
+                total_output: r.total_output,
+                total_cost: r.total_cost,
+            }
+        })
+        .collect()
+}
+
+pub fn print_daily(rows: &[DailyRow], title: &str, show_all: bool) {
     if rows.is_empty() {
         println!("{}", "No usage data found.".dimmed());
         return;
@@ -106,105 +209,174 @@ pub fn print_daily(rows: &[DailyRow], title: &str) {
     let total_input: i64 = rows.iter().map(|r| r.total_input).sum();
     let total_output: i64 = rows.iter().map(|r| r.total_output).sum();
 
-    // Build table manually for colored header/totals and wider columns
-    let col_date = 12;
-    let col_models = 24;
-    let col_input = 12;
-    let col_output = 12;
-    let col_cost = 14;
+    // Pre-compute all period rows and formatted values to determine column widths
+    let mut all_period_rows: Vec<Vec<DisplayRow>> = Vec::new();
+    let mut all_dates: Vec<String> = Vec::new();
 
-    let sep = format!(
-        "├{:─>w1$}┼{:─>w2$}┼{:─>w3$}┼{:─>w4$}┼{:─>w5$}┤",
-        "", "", "", "", "",
-        w1 = col_date, w2 = col_models, w3 = col_input, w4 = col_output, w5 = col_cost,
-    );
+    for r in rows {
+        all_period_rows.push(build_period_rows(r, show_all));
+        all_dates.push(format_period(&r.date));
+    }
+
+    let total_input_str = format_tokens_comma(total_input);
+    let total_output_str = format_tokens_comma(total_output);
+    let total_cost_str = format_cost(total_cost);
+
+    // Calculate dynamic column widths (content width, excluding borders and padding)
+    let col_date = all_dates
+        .iter()
+        .map(|d| d.len())
+        .max()
+        .unwrap_or(4)
+        .max("Date".len())
+        .max("Total".len());
+
+    let col_models = all_period_rows
+        .iter()
+        .flat_map(|prows| prows.iter().map(|r| r.label.len()))
+        .max()
+        .unwrap_or(6)
+        .max("Models".len());
+
+    let col_input = all_period_rows
+        .iter()
+        .flat_map(|prows| prows.iter().map(|r| r.input.len()))
+        .max()
+        .unwrap_or(5)
+        .max("Input".len())
+        .max(total_input_str.len());
+
+    let col_output = all_period_rows
+        .iter()
+        .flat_map(|prows| prows.iter().map(|r| r.output.len()))
+        .max()
+        .unwrap_or(6)
+        .max("Output".len())
+        .max(total_output_str.len());
+
+    let col_cost = all_period_rows
+        .iter()
+        .flat_map(|prows| prows.iter().map(|r| r.cost.len()))
+        .max()
+        .unwrap_or(10)
+        .max("Cost (USD)".len())
+        .max(total_cost_str.len());
+
+    // Add padding (1 space each side)
+    let w_date = col_date + 2;
+    let w_models = col_models + 2;
+    let w_input = col_input + 2;
+    let w_output = col_output + 2;
+    let w_cost = col_cost + 2;
+
     let top = format!(
         "┌{:─>w1$}┬{:─>w2$}┬{:─>w3$}┬{:─>w4$}┬{:─>w5$}┐",
         "", "", "", "", "",
-        w1 = col_date, w2 = col_models, w3 = col_input, w4 = col_output, w5 = col_cost,
+        w1 = w_date, w2 = w_models, w3 = w_input, w4 = w_output, w5 = w_cost,
+    );
+    let sep = format!(
+        "├{:─>w1$}┼{:─>w2$}┼{:─>w3$}┼{:─>w4$}┼{:─>w5$}┤",
+        "", "", "", "", "",
+        w1 = w_date, w2 = w_models, w3 = w_input, w4 = w_output, w5 = w_cost,
     );
     let bot = format!(
         "└{:─>w1$}┴{:─>w2$}┴{:─>w3$}┴{:─>w4$}┴{:─>w5$}┘",
         "", "", "", "", "",
-        w1 = col_date, w2 = col_models, w3 = col_input, w4 = col_output, w5 = col_cost,
+        w1 = w_date, w2 = w_models, w3 = w_input, w4 = w_output, w5 = w_cost,
+    );
+    // Dotted separator for between models within a provider
+    let dotted = format!(
+        "│ {:<cw$} │ {:·>mw$} │ {:·>iw$} │ {:·>ow$} │ {:·>kw$} │",
+        "", "", "", "", "",
+        cw = col_date, mw = col_models, iw = col_input, ow = col_output, kw = col_cost,
     );
 
     println!("{}", top);
 
     // Header
     println!(
-        "│{:<w1$}│{:<w2$}│{:>w3$}│{:>w4$}│{:>w5$}│",
-        " Date".cyan().bold(),
-        " Models".cyan().bold(),
-        format!("{} ", "Input").cyan().bold(),
-        format!("{} ", "Output").cyan().bold(),
-        format!("{} ", "Cost (USD)").cyan().bold(),
-        w1 = col_date, w2 = col_models, w3 = col_input, w4 = col_output, w5 = col_cost,
+        "│ {:<cw$} │ {:<mw$} │ {:>iw$} │ {:>ow$} │ {:>kw$} │",
+        "Date".cyan().bold(),
+        "Models".cyan().bold(),
+        "Input".cyan().bold(),
+        "Output".cyan().bold(),
+        "Cost (USD)".cyan().bold(),
+        cw = col_date,
+        mw = col_models,
+        iw = col_input,
+        ow = col_output,
+        kw = col_cost,
     );
     println!("{}", sep);
 
     // Data rows
-    for r in rows {
-        let models: Vec<String> = r.models.iter().map(|m| shorten_model(m)).collect();
-        let date = format_period(&r.date);
-        let date_lines: Vec<&str> = date.split('\n').collect();
-        let model_lines: Vec<String> = if models.is_empty() {
-            vec![String::new()]
-        } else {
-            models.iter().map(|m| format!("- {}", m)).collect()
-        };
+    for (row_idx, _) in rows.iter().enumerate() {
+        // Add separator between periods (but not before the first row)
+        if row_idx > 0 {
+            println!("{}", sep);
+        }
 
-        let max_lines = date_lines.len().max(model_lines.len());
+        let period_rows = &all_period_rows[row_idx];
+        let date = &all_dates[row_idx];
 
-        for line_idx in 0..max_lines {
-            let d = date_lines.get(line_idx).unwrap_or(&"");
-            let m = model_lines
-                .get(line_idx)
-                .map(|s| s.as_str())
-                .unwrap_or("");
-
-            if line_idx == 0 {
-                println!(
-                    "│ {:<w1$}│ {:<w2$}│{:>w3$} │{:>w4$} │{:>w5$} │",
-                    d,
-                    m,
-                    format_tokens_comma(r.total_input),
-                    format_tokens_comma(r.total_output),
-                    format_cost(r.total_cost),
-                    w1 = col_date - 2,
-                    w2 = col_models - 2,
-                    w3 = col_input - 2,
-                    w4 = col_output - 2,
-                    w5 = col_cost - 2,
-                );
-            } else {
-                println!(
-                    "│ {:<w1$}│ {:<w2$}│{:>w3$}│{:>w4$}│{:>w5$}│",
-                    d, m, "", "", "",
-                    w1 = col_date - 2,
-                    w2 = col_models - 2,
-                    w3 = col_input,
-                    w4 = col_output,
-                    w5 = col_cost,
-                );
+        for (line_idx, drow) in period_rows.iter().enumerate() {
+            if matches!(drow.kind, RowKind::DottedSep) {
+                println!("{}", dotted.dimmed());
+                continue;
             }
+
+            let d = if line_idx == 0 { date.as_str() } else { "" };
+
+            let model_padded = format!("{:<width$}", drow.label, width = col_models);
+            let model_display = if matches!(drow.kind, RowKind::Provider) {
+                model_padded.magenta().to_string()
+            } else {
+                model_padded
+            };
+
+            let input_plain = format!("{:>width$}", drow.input, width = col_input);
+            let output_plain = format!("{:>width$}", drow.output, width = col_output);
+            let cost_plain = format!("{:>width$}", drow.cost, width = col_cost);
+
+            // Dim model-level values to distinguish from provider aggregates
+            let (input_disp, output_disp, cost_disp) = if matches!(drow.kind, RowKind::Model) {
+                (
+                    input_plain.dimmed().to_string(),
+                    output_plain.dimmed().to_string(),
+                    cost_plain.dimmed().to_string(),
+                )
+            } else {
+                (input_plain, output_plain, cost_plain)
+            };
+
+            println!(
+                "│ {:<cw$} │ {} │ {} │ {} │ {} │",
+                d,
+                model_display,
+                input_disp,
+                output_disp,
+                cost_disp,
+                cw = col_date,
+            );
         }
     }
 
     // Totals row
     println!("{}", sep);
+
+    let total_label = format!("{:<width$}", "Total", width = col_date);
+    let empty_models = format!("{:<width$}", "", width = col_models);
+    let total_in = format!("{:>width$}", total_input_str, width = col_input);
+    let total_out = format!("{:>width$}", total_output_str, width = col_output);
+    let total_c = format!("{:>width$}", total_cost_str, width = col_cost);
+
     println!(
-        "│ {:<w1$}│{:<w2$}│{:>w3$} │{:>w4$} │{:>w5$} │",
-        "Total".yellow().bold(),
-        "",
-        format_tokens_comma(total_input).yellow(),
-        format_tokens_comma(total_output).yellow(),
-        format_cost(total_cost).yellow().bold(),
-        w1 = col_date - 2,
-        w2 = col_models,
-        w3 = col_input - 2,
-        w4 = col_output - 2,
-        w5 = col_cost - 2,
+        "│ {} │ {} │ {} │ {} │ {} │",
+        total_label.yellow().bold(),
+        empty_models,
+        total_in.yellow(),
+        total_out.yellow(),
+        total_c.yellow().bold(),
     );
     println!("{}", bot);
 }
@@ -329,32 +501,29 @@ fn format_cost(c: f64) -> String {
     }
 }
 
-/// Abbreviate model names like ccusage does:
+/// Abbreviate model names:
 /// "claude-opus-4-6-20260205" -> "opus-4-6"
 /// "claude-sonnet-4-20250514" -> "sonnet-4"
 /// "claude-haiku-4-5-20251001" -> "haiku-4-5"
+/// "antigravity-gemini-3-flash" -> "gemini-3-flash"
+/// "antigravity-claude-opus-4-5-thinking" -> "opus-4-5-thinking"
 /// "gpt-4o-mini" -> "gpt-4o-mini"
 fn shorten_model(model: &str) -> String {
-    let m = model.strip_prefix("claude-").unwrap_or(model);
+    // Strip antigravity- prefix first
+    let m = model.strip_prefix("antigravity-").unwrap_or(model);
+    let m = m.strip_prefix("claude-").unwrap_or(m);
     let m = strip_date_suffix(m);
     let m = m.strip_prefix("4-").unwrap_or(m);
     m.to_string()
 }
 
-/// Format period label for display.
-/// "2026-04-15" (daily) -> "2026\n04-15"
-/// "2026-W15" (weekly) -> "2026\nW15"
+/// Format period label for display (single line).
+/// "2026-04-15" (daily) -> "2026-04-15"
+/// "2026-W15" (weekly) -> "2026 W15"
 /// "2026-04" (monthly) -> "2026-04"
 fn format_period(s: &str) -> String {
-    if s.len() == 10 && s.chars().nth(4) == Some('-') {
-        format!("{}\n{}", &s[..4], &s[5..])
-    } else if s.contains("-W") {
-        let parts: Vec<&str> = s.splitn(2, '-').collect();
-        if parts.len() == 2 {
-            format!("{}\n{}", parts[0], parts[1])
-        } else {
-            s.to_string()
-        }
+    if s.contains("-W") {
+        s.replace('-', " ")
     } else {
         s.to_string()
     }

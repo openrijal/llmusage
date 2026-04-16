@@ -29,9 +29,19 @@ pub struct SummaryRow {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelEntry {
+    pub provider: String,
+    pub model: String,
+    pub input_tokens: i64,
+    pub output_tokens: i64,
+    pub cost: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DailyRow {
     pub date: String,
     pub models: Vec<String>,
+    pub model_entries: Vec<ModelEntry>,
     pub total_input: i64,
     pub total_output: i64,
     pub total_cost: f64,
