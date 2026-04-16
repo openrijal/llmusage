@@ -9,7 +9,7 @@ keywords = ["ai", "tokens", "usage", "cli", "llm"]
 categories = ["command-line-utilities"]
 authors = ["Nitesh Rijal <namaste@niteshrijal.com>"]
 readme = "README.md"
-homepage = "https://github.com/openrijal/llmusage"
+homepage = "https://niteshrijal.com"
 
 [[bin]]
 name = "llmusage"
