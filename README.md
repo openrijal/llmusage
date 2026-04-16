@@ -151,6 +151,12 @@ TOML config at platform-specific location:
 | `ollama_host` | Ollama server URL | `http://localhost:11434` |
 | `claude_code_enabled` | Parse Claude Code session logs | `true` |
 
+## Screenshots
+
+### Daily usage with provider grouping
+
+![Daily usage report showing provider-grouped models with per-model token and cost breakdown](screenshots/daily_usage_all.png)
+
 ## Architecture
 
 ```
