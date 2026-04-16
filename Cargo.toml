@@ -7,6 +7,9 @@ license = "MIT"
 repository = "https://github.com/openrijal/llmusage"
 keywords = ["ai", "tokens", "usage", "cli", "llm"]
 categories = ["command-line-utilities"]
+authors = ["Nitesh Rijal <rijal.it@gmail.com>"]
+readme = "README.md"
+homepage = "https://github.com/openrijal/llmusage"
 
 [[bin]]
 name = "llmusage"
