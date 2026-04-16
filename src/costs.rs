@@ -114,9 +114,7 @@ pub fn get_model_pricing(provider_filter: Option<&str>) -> Vec<ModelPricing> {
                 model: model_key,
                 input_per_mtok: input_per_token * 1_000_000.0,
                 output_per_mtok: output_per_token * 1_000_000.0,
-                cache_read_per_mtok: entry
-                    .cache_read_input_token_cost
-                    .map(|c| c * 1_000_000.0),
+                cache_read_per_mtok: entry.cache_read_input_token_cost.map(|c| c * 1_000_000.0),
                 cache_write_per_mtok: entry
                     .cache_creation_input_token_cost
                     .map(|c| c * 1_000_000.0),
@@ -203,9 +201,30 @@ fn calculate_cost_fallback(
 /// Fallback pricing when no LiteLLM cache is available.
 fn get_fallback_pricing(provider_filter: Option<&str>) -> Vec<ModelPricing> {
     let all = vec![
-        mp("anthropic", "claude-opus-4-20250514", 15.0, 75.0, Some(1.5), Some(18.75)),
-        mp("anthropic", "claude-sonnet-4-20250514", 3.0, 15.0, Some(0.3), Some(3.75)),
-        mp("anthropic", "claude-haiku-3-5-20241022", 0.80, 4.0, Some(0.08), Some(1.0)),
+        mp(
+            "anthropic",
+            "claude-opus-4-20250514",
+            15.0,
+            75.0,
+            Some(1.5),
+            Some(18.75),
+        ),
+        mp(
+            "anthropic",
+            "claude-sonnet-4-20250514",
+            3.0,
+            15.0,
+            Some(0.3),
+            Some(3.75),
+        ),
+        mp(
+            "anthropic",
+            "claude-haiku-3-5-20241022",
+            0.80,
+            4.0,
+            Some(0.08),
+            Some(1.0),
+        ),
         mp("openai", "gpt-4o", 2.50, 10.0, None, None),
         mp("openai", "gpt-4o-mini", 0.15, 0.60, None, None),
         mp("openai", "gpt-4.1", 2.0, 8.0, None, None),

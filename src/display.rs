@@ -2,7 +2,7 @@ use crate::models::{DailyRow, ModelPricing, SummaryRow, UsageRecord};
 use colored::Colorize;
 use std::collections::BTreeMap;
 use tabled::{
-    settings::{Alignment, Modify, Style, object::Columns},
+    settings::{object::Columns, Alignment, Modify, Style},
     Table, Tabled,
 };
 
@@ -174,11 +174,14 @@ pub fn filter_daily_rows(rows: &[DailyRow], show_all: bool) -> Vec<DailyRow> {
     }
     rows.iter()
         .map(|r| {
-            let filtered: Vec<_> = r.model_entries.iter()
+            let filtered: Vec<_> = r
+                .model_entries
+                .iter()
                 .filter(|e| e.input_tokens != 0 || e.output_tokens != 0 || e.cost != 0.0)
                 .cloned()
                 .collect();
-            let models: Vec<String> = filtered.iter()
+            let models: Vec<String> = filtered
+                .iter()
                 .map(|e| e.model.clone())
                 .collect::<std::collections::HashSet<_>>()
                 .into_iter()
@@ -271,24 +274,56 @@ pub fn print_daily(rows: &[DailyRow], title: &str, show_all: bool) {
 
     let top = format!(
         "┌{:─>w1$}┬{:─>w2$}┬{:─>w3$}┬{:─>w4$}┬{:─>w5$}┐",
-        "", "", "", "", "",
-        w1 = w_date, w2 = w_models, w3 = w_input, w4 = w_output, w5 = w_cost,
+        "",
+        "",
+        "",
+        "",
+        "",
+        w1 = w_date,
+        w2 = w_models,
+        w3 = w_input,
+        w4 = w_output,
+        w5 = w_cost,
     );
     let sep = format!(
         "├{:─>w1$}┼{:─>w2$}┼{:─>w3$}┼{:─>w4$}┼{:─>w5$}┤",
-        "", "", "", "", "",
-        w1 = w_date, w2 = w_models, w3 = w_input, w4 = w_output, w5 = w_cost,
+        "",
+        "",
+        "",
+        "",
+        "",
+        w1 = w_date,
+        w2 = w_models,
+        w3 = w_input,
+        w4 = w_output,
+        w5 = w_cost,
     );
     let bot = format!(
         "└{:─>w1$}┴{:─>w2$}┴{:─>w3$}┴{:─>w4$}┴{:─>w5$}┘",
-        "", "", "", "", "",
-        w1 = w_date, w2 = w_models, w3 = w_input, w4 = w_output, w5 = w_cost,
+        "",
+        "",
+        "",
+        "",
+        "",
+        w1 = w_date,
+        w2 = w_models,
+        w3 = w_input,
+        w4 = w_output,
+        w5 = w_cost,
     );
     // Dotted separator for between models within a provider
     let dotted = format!(
         "│ {:<cw$} │ {:·>mw$} │ {:·>iw$} │ {:·>ow$} │ {:·>kw$} │",
-        "", "", "", "", "",
-        cw = col_date, mw = col_models, iw = col_input, ow = col_output, kw = col_cost,
+        "",
+        "",
+        "",
+        "",
+        "",
+        cw = col_date,
+        mw = col_models,
+        iw = col_input,
+        ow = col_output,
+        kw = col_cost,
     );
 
     println!("{}", top);

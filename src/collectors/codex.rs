@@ -96,8 +96,7 @@ impl Collector for CodexCollector {
                             if let Some(id) = payload.get("id").and_then(|v| v.as_str()) {
                                 session_id = Some(id.to_string());
                             }
-                            if let Some(mp) =
-                                payload.get("model_provider").and_then(|v| v.as_str())
+                            if let Some(mp) = payload.get("model_provider").and_then(|v| v.as_str())
                             {
                                 model_provider = mp.to_string();
                             }
@@ -170,14 +169,9 @@ impl Collector for CodexCollector {
                                         cache_write_tokens: 0,
                                         cost_usd: cost,
                                         session_id: session_id.clone(),
-                                        recorded_at: entry
-                                            .timestamp
-                                            .clone()
-                                            .unwrap_or_else(|| {
-                                                Utc::now()
-                                                    .format("%Y-%m-%dT%H:%M:%S")
-                                                    .to_string()
-                                            }),
+                                        recorded_at: entry.timestamp.clone().unwrap_or_else(|| {
+                                            Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string()
+                                        }),
                                         collected_at: collected_at.clone(),
                                         metadata: None,
                                     });

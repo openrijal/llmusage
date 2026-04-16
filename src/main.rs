@@ -271,7 +271,13 @@ fn cmd_summary(
     Ok(())
 }
 
-fn cmd_daily(db: &db::Database, days: u32, provider: Option<&str>, json: bool, show_all: bool) -> Result<()> {
+fn cmd_daily(
+    db: &db::Database,
+    days: u32,
+    provider: Option<&str>,
+    json: bool,
+    show_all: bool,
+) -> Result<()> {
     let rows = db.query_daily(days, provider)?;
     if json {
         let filtered = display::filter_daily_rows(&rows, show_all);
@@ -282,7 +288,13 @@ fn cmd_daily(db: &db::Database, days: u32, provider: Option<&str>, json: bool, s
     Ok(())
 }
 
-fn cmd_weekly(db: &db::Database, weeks: u32, provider: Option<&str>, json: bool, show_all: bool) -> Result<()> {
+fn cmd_weekly(
+    db: &db::Database,
+    weeks: u32,
+    provider: Option<&str>,
+    json: bool,
+    show_all: bool,
+) -> Result<()> {
     let rows = db.query_weekly(weeks, provider)?;
     if json {
         let filtered = display::filter_daily_rows(&rows, show_all);
@@ -293,7 +305,13 @@ fn cmd_weekly(db: &db::Database, weeks: u32, provider: Option<&str>, json: bool,
     Ok(())
 }
 
-fn cmd_monthly(db: &db::Database, months: u32, provider: Option<&str>, json: bool, show_all: bool) -> Result<()> {
+fn cmd_monthly(
+    db: &db::Database,
+    months: u32,
+    provider: Option<&str>,
+    json: bool,
+    show_all: bool,
+) -> Result<()> {
     let rows = db.query_monthly(months, provider)?;
     if json {
         let filtered = display::filter_daily_rows(&rows, show_all);
@@ -346,12 +364,7 @@ async fn cmd_update_pricing() -> Result<()> {
     Ok(())
 }
 
-fn cmd_export(
-    db: &db::Database,
-    format: &str,
-    output: Option<&str>,
-    days: u32,
-) -> Result<()> {
+fn cmd_export(db: &db::Database, format: &str, output: Option<&str>, days: u32) -> Result<()> {
     let since = chrono::Utc::now() - chrono::Duration::days(days as i64);
     let since_str = since.format("%Y-%m-%d").to_string();
     let rows = db.query_detail(None, None, Some(&since_str), None, 100_000)?;

@@ -47,8 +47,7 @@ pub fn query_summary(
     );
 
     let days_param = format!("-{} days", days);
-    let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> =
-        vec![Box::new(days_param.clone())];
+    let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> = vec![Box::new(days_param.clone())];
 
     if let Some(p) = provider {
         sql.push_str(&format!(" AND provider = ?{}", param_values.len() + 1));
@@ -61,7 +60,8 @@ pub fn query_summary(
 
     sql.push_str(" GROUP BY provider, model ORDER BY total_cost DESC");
 
-    let params_refs: Vec<&dyn rusqlite::types::ToSql> = param_values.iter().map(|p| p.as_ref()).collect();
+    let params_refs: Vec<&dyn rusqlite::types::ToSql> =
+        param_values.iter().map(|p| p.as_ref()).collect();
     let mut stmt = conn.prepare(&sql)?;
     let rows = stmt.query_map(params_refs.as_slice(), |row| {
         Ok(SummaryRow {
@@ -110,20 +110,19 @@ pub fn query_detail(
         sql.push_str(&format!(" AND recorded_at <= ?{}", param_values.len() + 1));
         // When the user passes a bare date (YYYY-MM-DD), append end-of-day so
         // timestamped records on that date are included.
-        let until_val = if u.len() == 10 && u.chars().nth(4) == Some('-') && u.chars().nth(7) == Some('-') {
-            format!("{}T23:59:59", u)
-        } else {
-            u.to_string()
-        };
+        let until_val =
+            if u.len() == 10 && u.chars().nth(4) == Some('-') && u.chars().nth(7) == Some('-') {
+                format!("{}T23:59:59", u)
+            } else {
+                u.to_string()
+            };
         param_values.push(Box::new(until_val));
     }
 
-    sql.push_str(&format!(
-        " ORDER BY recorded_at DESC LIMIT {}",
-        limit
-    ));
+    sql.push_str(&format!(" ORDER BY recorded_at DESC LIMIT {}", limit));
 
-    let params_refs: Vec<&dyn rusqlite::types::ToSql> = param_values.iter().map(|p| p.as_ref()).collect();
+    let params_refs: Vec<&dyn rusqlite::types::ToSql> =
+        param_values.iter().map(|p| p.as_ref()).collect();
     let mut stmt = conn.prepare(&sql)?;
     let rows = stmt.query_map(params_refs.as_slice(), |row| {
         Ok(UsageRecord {
@@ -149,12 +148,13 @@ pub fn query_detail(
     Ok(results)
 }
 
-pub fn query_daily(
-    conn: &Connection,
-    days: u32,
-    provider: Option<&str>,
-) -> Result<Vec<DailyRow>> {
-    query_grouped(conn, "DATE(recorded_at)", &format!("-{} days", days), provider)
+pub fn query_daily(conn: &Connection, days: u32, provider: Option<&str>) -> Result<Vec<DailyRow>> {
+    query_grouped(
+        conn,
+        "DATE(recorded_at)",
+        &format!("-{} days", days),
+        provider,
+    )
 }
 
 pub fn query_weekly(
@@ -207,7 +207,9 @@ fn query_grouped(
         param_values.push(Box::new(p.to_string()));
     }
 
-    sql.push_str(" GROUP BY period, provider, model ORDER BY period ASC, provider ASC, total_cost DESC");
+    sql.push_str(
+        " GROUP BY period, provider, model ORDER BY period ASC, provider ASC, total_cost DESC",
+    );
 
     let params_refs: Vec<&dyn rusqlite::types::ToSql> =
         param_values.iter().map(|p| p.as_ref()).collect();
