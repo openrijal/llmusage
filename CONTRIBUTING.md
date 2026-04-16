@@ -151,7 +151,7 @@ Open an issue describing:
 
 ### Security Vulnerabilities
 
-Do **not** open a public issue. Instead, email [rijal.it@gmail.com](mailto:rijal.it@gmail.com) with details. We will respond within 48 hours.
+Do **not** open a public issue. Instead, email [namaste@niteshrijal.com](mailto:namaste@niteshrijal.com) with details. We will respond within 48 hours.
 
 ## Code of Conduct
 
