@@ -6,7 +6,7 @@
 
 ## Problem Statement
 
-Developers using multiple AI coding assistants (Claude Code, Codex, OpenCode, Gemini CLI) and AI APIs (Anthropic, OpenAI, Gemini) have no unified way to track their token consumption and costs. Each tool stores usage data in different formats and locations, making it difficult to answer basic questions like:
+Developers using multiple AI coding assistants (Claude Code, Codex, Cursor, OpenCode, Gemini CLI) and AI APIs (Anthropic, OpenAI, Gemini) have no unified way to track their token consumption and costs. Each tool stores usage data in different formats and locations, making it difficult to answer basic questions like:
 
 - How much am I spending per day/week/month across all tools?
 - Which models consume the most tokens?
@@ -21,7 +21,7 @@ Developers using multiple AI coding assistants (Claude Code, Codex, OpenCode, Ge
 ## Product Goals
 
 1. **Unified collection**: Pull usage data from all major AI coding tools and APIs into one place
-2. **Zero-config for local tools**: Auto-detect installed CLI tools (Claude Code, Codex, OpenCode) without requiring API keys
+2. **Zero-config for local tools**: Auto-detect installed local tools (Claude Code, Codex, Cursor, OpenCode, Gemini CLI JSONL) without requiring API keys
 3. **Accurate pricing**: Use LiteLLM's maintained pricing database (900+ models) with hardcoded fallback
 4. **Fast queries**: SQLite-backed storage with indexed queries for instant reporting
 5. **Simple distribution**: Single binary via `cargo install`, no runtime dependencies
@@ -37,8 +37,9 @@ Developers using multiple AI coding assistants (Claude Code, Codex, OpenCode, Ge
 │   Collectors         │  ← one per source, runs on-demand
 │   ├─ claude_code     │  ← ~/.claude/projects/**/*.jsonl
 │   ├─ codex           │  ← ~/.codex/archived_sessions/*.jsonl
+│   ├─ cursor          │  ← ~/Library/Application Support/Cursor/.../state.vscdb
 │   ├─ opencode        │  ← ~/.local/share/opencode/opencode.db
-│   ├─ gemini_cli      │  ← ~/.gemini/ (protobuf - stub)
+│   ├─ gemini_cli      │  ← ~/.gemini/tmp/**/chats/*.jsonl
 │   ├─ anthropic       │  ← API: /v1/organizations/usage
 │   ├─ openai          │  ← API: /v1/organization/usage
 │   ├─ gemini          │  ← API: stub (no clean usage API)
@@ -90,7 +91,9 @@ A UNIQUE index on `(provider, model, input_tokens, output_tokens, cache_read_tok
 
 - **Claude Code**: Parses JSONL session logs from `~/.claude/projects/`. Extracts `message.usage` from assistant messages.
 - **Codex**: Parses JSONL from `~/.codex/archived_sessions/`. Extracts `token_count` events with `last_token_usage` deltas.
+- **Cursor**: Reads local SQLite state from Cursor's `state.vscdb` and extracts per-bubble token counts from persisted Cursor AI metadata.
 - **OpenCode**: Reads directly from SQLite at `~/.local/share/opencode/opencode.db`. Message data contains `tokens` and `cost` fields.
+- **Gemini CLI**: Parses JSONL chat session files under `~/.gemini/tmp/**/chats/`.
 
 ### Tier 2 - API-based (requires API keys)
 
@@ -98,9 +101,11 @@ A UNIQUE index on `(provider, model, input_tokens, output_tokens, cache_read_tok
 - **OpenAI**: Usage API at `/v1/organization/usage`
 - **Ollama**: Requires explicit `ollama_host` config
 
-### Tier 3 - Stubs (data not accessible)
+### Tier 3 - Strict-mode unsupported
 
-- **Gemini CLI**: Uses protobuf (`.pb`) for conversations - no parseable usage data
+- **Legacy Antigravity protobuf sessions**: Uses protobuf (`.pb`) for conversations - no parseable usage data
+- **Windsurf**: Current local artifacts do not expose reliable token counts
+- **VS Code AI tooling**: Installed extensions expose session/model metadata, but not token counts
 - **Gemini API**: No clean programmatic usage API from Google AI Studio
 
 ## Pricing
@@ -160,6 +165,7 @@ TOML config at `~/.config/llmusage/config.toml` (macOS: `~/Library/Application S
 - No team/multi-user features
 - No real-time streaming collection
 - No proxy-based interception for arbitrary apps
+- No metadata-only collectors in strict mode
 
 ## Future Considerations
 
@@ -167,5 +173,7 @@ TOML config at `~/.config/llmusage/config.toml` (macOS: `~/Library/Application S
 - Interactive TUI with ratatui
 - GitHub Actions integration for CI cost tracking
 - Gemini CLI protobuf reverse-engineering
+- Windsurf usage support if a token-bearing local or API source becomes available
+- VS Code extension support if token-bearing local artifacts become available
 - Cost alerts and budgets
 - Historical cost trend charts
