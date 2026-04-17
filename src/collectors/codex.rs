@@ -147,8 +147,7 @@ impl Collector for CodexCollector {
                                     let output =
                                         usage.output_tokens + usage.reasoning_output_tokens;
 
-                                    if input == 0 && output == 0 && usage.cached_input_tokens == 0
-                                    {
+                                    if input == 0 && output == 0 && usage.cached_input_tokens == 0 {
                                         continue;
                                     }
 

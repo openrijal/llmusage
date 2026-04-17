@@ -185,7 +185,10 @@ mod tests {
         assert_eq!(parsed.data[0].results.len(), 2);
         assert_eq!(parsed.data[0].results[0].input_tokens, 1200);
         assert_eq!(parsed.data[0].results[0].input_cached_tokens, 100);
-        assert_eq!(parsed.data[0].results[0].model.as_deref(), Some("gpt-4o-mini"));
+        assert_eq!(
+            parsed.data[0].results[0].model.as_deref(),
+            Some("gpt-4o-mini")
+        );
         assert!(!parsed.has_more);
     }
 
