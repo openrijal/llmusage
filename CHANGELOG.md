@@ -4,6 +4,26 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [0.1.4] - 2026-04-17
+
+
+### Added
+
+- Add .specs for fallback-pricing (task/impl/validation) (73f03d3)
+- Add .specs for quick-bug bundle (task/impl/validation) (37de3c3)
+- Add .specs for data-correctness (task/impl/validation) (cd4ddc9)
+
+### Changed
+
+- chore: bump to v0.1.4 (cffeaf5)
+- Merge remote-tracking branch 'origin/main' into fix/data-correctness (aaec08b)
+
+### Fixed
+
+- Fix weekly ISO-week crash and broken-pipe panic (a90e1dd)
+- Fix fallback pricing: deterministic matching and cache token costs (a02435b)
+- Fix quick-bug bundle: save_config, token formatting, ISO weeks, export validation (a3cc868)
+- Fix data correctness: CSV escaping, pricing cache, daily totals (217fe8b)
 ## [0.1.3] - 2026-04-17
 
 
