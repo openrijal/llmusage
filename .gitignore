@@ -1,1 +1,38 @@
+# Rust
 /target
+**/*.rs.bk
+*.pdb
+
+# Databases
+*.db
+*.db-wal
+*.db-shm
+
+# Playwright MCP
+.playwright-mcp/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Editors / IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Environment / secrets
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+
+# Testing artifacts
+*.profraw
+lcov.info
+tarpaulin-report.html
