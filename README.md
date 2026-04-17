@@ -33,15 +33,15 @@ llmusage collects usage data from multiple AI sources — API dashboards, local 
 
 ## Installation
 
-### Prerequisites
+### Install script (recommended on Linux and macOS)
 
-You need the [Rust toolchain](https://rustup.rs/) installed for source-based installation methods. No other system dependencies are required — SQLite is bundled.
-
-### From crates.io (recommended)
+One-liner that downloads the right prebuilt binary for your platform and drops it into a bin directory. No Rust toolchain, no C compiler, no build step:
 
 ```bash
-cargo install llmusage
+curl -LsSf https://raw.githubusercontent.com/openrijal/llmusage/main/install.sh | sh
 ```
+
+The script installs to `/usr/local/bin` when run as root, otherwise to `$HOME/.local/bin`. Override with `LLMUSAGE_INSTALL_DIR=/your/path`, or pin a version with `LLMUSAGE_VERSION=v0.1.2`. Supports macOS (Intel & Apple Silicon) and Linux (x86_64 glibc/musl, aarch64).
 
 ### From Homebrew (macOS)
 
@@ -49,11 +49,19 @@ cargo install llmusage
 brew install openrijal/tap/llmusage
 ```
 
+### From crates.io
+
+```bash
+cargo install llmusage
+```
+
+This route compiles from source and needs the [Rust toolchain](https://rustup.rs/) plus a working C compiler (`build-essential` on Debian/Ubuntu, `base-devel` on Arch, `build-base` on Alpine, Xcode Command Line Tools on macOS) because `rusqlite` bundles SQLite. If you don't want to install a C toolchain, use the install script above or Homebrew instead.
+
 ### Pre-built binaries
 
-Download the latest binary for your platform from [GitHub Releases](https://github.com/openrijal/llmusage/releases).
+Download the tarball for your platform directly from [GitHub Releases](https://github.com/openrijal/llmusage/releases).
 
-Available for: macOS (Intel & Apple Silicon), Linux (x86_64, ARM64).
+Available for: macOS (Intel & Apple Silicon), Linux (x86_64 glibc, x86_64 musl, aarch64).
 
 ### Build from source
 
@@ -202,6 +210,9 @@ TOML config at platform-specific location:
 ## Uninstall
 
 ```bash
+# If installed via the install script (default location)
+rm "$HOME/.local/bin/llmusage"   # or /usr/local/bin/llmusage when installed as root
+
 # If installed via cargo
 cargo uninstall llmusage
 
