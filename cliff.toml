@@ -1,0 +1,70 @@
+# git-cliff configuration for llmusage
+# See https://git-cliff.org/docs/configuration
+
+[changelog]
+# Keep a Changelog style header. Emitted once at the top of CHANGELOG.md.
+header = """
+# Changelog
+
+All notable changes to this project are documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+"""
+
+# Per-release section template. Rendered once per tag.
+body = """
+{% if version -%}
+## [{{ version | trim_start_matches(pat="v") }}] - {{ timestamp | date(format="%Y-%m-%d") }}
+{% else -%}
+## [Unreleased]
+{% endif %}
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group | upper_first }}
+{% for commit in commits %}
+- {{ commit.message | split(pat="\\n") | first | trim }}{% if commit.id %} ({{ commit.id | truncate(length=7, end="") }}){% endif %}
+{%- endfor %}
+{% endfor %}
+"""
+
+footer = ""
+trim = true
+# Keep only commits that matched a group.
+postprocessors = []
+
+[git]
+conventional_commits = false
+filter_unconventional = false
+split_commits = false
+
+# Commit classification. The first matching regex wins. Commits with
+# `skip = true` or no matching rule are omitted from the changelog.
+commit_parsers = [
+    # Release housekeeping — never shown in the changelog.
+    { message = "^Bump version", skip = true },
+    { message = "^Apply cargo fmt", skip = true },
+    { message = "^Merge pull request", skip = true },
+    { message = "^Merge branch", skip = true },
+    { message = "^Release ", skip = true },
+    { message = "^chore\\(release\\)", skip = true },
+    { message = "^Update CHANGELOG", skip = true },
+
+    # Meaningful changes — mapped to Keep-a-Changelog sections.
+    { message = "^(Add|Introduce|Implement|Support) ", group = "Added" },
+    { message = "^Fix", group = "Fixed" },
+    { message = "^(Remove|Drop|Delete) ", group = "Removed" },
+    { message = "^Deprecate ", group = "Deprecated" },
+    # Catch-all for wording like Change/Update/Refactor/Bump (non-version)/Grant/Allow/Point/Expand/Clarify/Switch/Consolidate.
+    { message = ".*", group = "Changed" },
+]
+
+# Drop commits that still end up in no group (defensive; the catch-all
+# above should cover everything except `skip = true` rules).
+filter_commits = true
+
+# Tag matching. Only release tags drive changelog sections.
+tag_pattern = "v[0-9]+\\.[0-9]+\\.[0-9]+$"
+
+# Sort newest release first.
+topo_order = false
+sort_commits = "newest"

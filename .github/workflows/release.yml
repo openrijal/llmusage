@@ -91,7 +91,14 @@ jobs:
     name: Create Release
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
+      - name: Checkout (full history for git-cliff)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
@@ -103,10 +110,48 @@ jobs:
           cd artifacts
           sha256sum *.tar.gz > sha256sums.txt
 
+      - name: Generate release notes with git-cliff
+        uses: orhun/git-cliff-action@v4
+        id: cliff-release-notes
+        with:
+          config: cliff.toml
+          args: --latest --strip all
+        env:
+          OUTPUT: RELEASE_NOTES.md
+
+      - name: Regenerate full CHANGELOG.md with git-cliff
+        uses: orhun/git-cliff-action@v4
+        with:
+          config: cliff.toml
+          args: --output CHANGELOG.md
+
+      - name: Commit CHANGELOG.md back to main
+        run: |
+          # If nothing changed vs. the current tree, there's nothing to commit.
+          if git diff --quiet -- CHANGELOG.md; then
+            echo "CHANGELOG.md unchanged; skipping commit"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # Switch onto main (we checked out the tag), keeping the regenerated
+          # CHANGELOG.md in the working tree so the commit lands on main.
+          git fetch origin main
+          git stash push -- CHANGELOG.md
+          git checkout -B main origin/main
+          git stash pop
+          if git diff --quiet -- CHANGELOG.md; then
+            echo "CHANGELOG.md already current on main"
+            exit 0
+          fi
+          git add CHANGELOG.md
+          git commit -m "Update CHANGELOG for ${GITHUB_REF_NAME}"
+          git push origin main
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          generate_release_notes: true
+          body_path: RELEASE_NOTES.md
           files: |
             artifacts/*.tar.gz
             artifacts/sha256sums.txt
