@@ -99,14 +99,15 @@ impl Collector for CursorCollector {
         }
 
         let model_names = load_model_names(&conn)?;
+        // Select every bubble, not just those with nonzero tokens. We need the
+        // full count so we can surface a diagnostic hint when Cursor persisted
+        // conversations but recorded zero tokens (typically: free-plan
+        // requests blocked by error 51 "Named models unavailable", aborted
+        // sessions, or in-flight requests).
         let mut stmt = conn.prepare(
             "SELECT key, CAST(value AS TEXT)
              FROM cursorDiskKV
-             WHERE key LIKE 'bubbleId:%'
-               AND (
-                 COALESCE(json_extract(CAST(value AS TEXT), '$.tokenCount.inputTokens'), 0) > 0
-                 OR COALESCE(json_extract(CAST(value AS TEXT), '$.tokenCount.outputTokens'), 0) > 0
-               )",
+             WHERE key LIKE 'bubbleId:%'",
         )?;
 
         let rows = stmt.query_map([], |row| {
@@ -116,8 +117,10 @@ impl Collector for CursorCollector {
         })?;
 
         let mut records = Vec::new();
+        let mut total_bubbles: usize = 0;
         for row in rows {
             let (key, payload) = row?;
+            total_bubbles += 1;
             let Some(payload) = payload else {
                 continue;
             };
@@ -127,6 +130,17 @@ impl Collector for CursorCollector {
         }
 
         let _ = std::fs::remove_file(temp_db);
+
+        if records.is_empty() && total_bubbles > 0 {
+            eprintln!(
+                "cursor: found {} conversation(s) on disk but none recorded token usage. \
+                 Likely causes: Cursor free plan blocking named models (error 51), aborted \
+                 or errored requests, or requests still in flight. Switch the Cursor model \
+                 picker to 'Auto' or verify your Cursor plan, then retry after a new chat.",
+                total_bubbles
+            );
+        }
+
         Ok(records)
     }
 }
