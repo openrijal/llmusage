@@ -91,7 +91,11 @@ impl Collector for GeminiCliCollector {
 
         if tmp_dir.exists() {
             for project_entry in std::fs::read_dir(&tmp_dir)?.flatten() {
-                if !project_entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                if !project_entry
+                    .file_type()
+                    .map(|t| t.is_dir())
+                    .unwrap_or(false)
+                {
                     continue;
                 }
                 let chats_dir = project_entry.path().join("chats");
@@ -260,9 +264,8 @@ fn has_legacy_pb_files(gemini_dir: &Path) -> bool {
         }
         if let Ok(mut it) = std::fs::read_dir(d) {
             if it.any(|e| {
-                e.ok().is_some_and(|e| {
-                    e.path().extension().is_some_and(|ext| ext == "pb")
-                })
+                e.ok()
+                    .is_some_and(|e| e.path().extension().is_some_and(|ext| ext == "pb"))
             }) {
                 return true;
             }
@@ -304,7 +307,11 @@ mod tests {
         assert_eq!(r.cache_read_tokens, 10);
         assert_eq!(r.session_id.as_deref(), Some("sess-1"));
         assert_eq!(r.recorded_at, "2026-04-16T10:00:02Z");
-        assert!(r.metadata.as_deref().unwrap_or("").contains("thoughts_tokens"));
+        assert!(r
+            .metadata
+            .as_deref()
+            .unwrap_or("")
+            .contains("thoughts_tokens"));
 
         cleanup(&tmp);
     }
