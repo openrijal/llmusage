@@ -62,7 +62,10 @@ pub fn load_config() -> Result<Config> {
 }
 
 pub fn save_config(cfg: &Config) -> Result<()> {
-    let dir = cfg.config_path.parent().unwrap();
+    let dir = cfg
+        .config_path
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("config_path has no parent directory"))?;
     std::fs::create_dir_all(dir)?;
     let content = toml::to_string_pretty(cfg)?;
     std::fs::write(&cfg.config_path, content)?;

@@ -165,10 +165,11 @@ pub fn query_weekly(
     weeks: u32,
     provider: Option<&str>,
 ) -> Result<Vec<DailyRow>> {
-    // strftime %W = week number, %Y = year → group by year-week
+    // %G-W%V = ISO 8601 year + week number (Mon-based, 01..53).
+    // Requires SQLite >= 3.44 (rusqlite bundled build satisfies this).
     query_grouped(
         conn,
-        "strftime('%Y-W%W', recorded_at)",
+        "strftime('%G-W%V', recorded_at)",
         &format!("-{} days", weeks * 7),
         provider,
     )
