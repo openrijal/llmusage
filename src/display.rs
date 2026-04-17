@@ -510,11 +510,16 @@ fn print_table_colored(table_str: &str) {
     }
 }
 
-/// Format tokens with comma separators (e.g., 1,234,567)
+/// Format tokens with comma separators (e.g., 1,234,567, -1,234)
 fn format_tokens_comma(n: i64) -> String {
-    let s = n.to_string();
-    let bytes = s.as_bytes();
+    let negative = n < 0;
+    let magnitude = (n as i128).unsigned_abs();
+    let digits = magnitude.to_string();
+    let bytes = digits.as_bytes();
     let mut result = String::new();
+    if negative {
+        result.push('-');
+    }
     for (i, &b) in bytes.iter().enumerate() {
         if i > 0 && (bytes.len() - i).is_multiple_of(3) {
             result.push(',');
@@ -573,4 +578,29 @@ fn strip_date_suffix(s: &str) -> &str {
         }
     }
     s
+}
+
+#[cfg(test)]
+mod format_tests {
+    use super::format_tokens_comma;
+
+    #[test]
+    fn positive_numbers_get_commas() {
+        assert_eq!(format_tokens_comma(0), "0");
+        assert_eq!(format_tokens_comma(123), "123");
+        assert_eq!(format_tokens_comma(1_234), "1,234");
+        assert_eq!(format_tokens_comma(1_234_567), "1,234,567");
+    }
+
+    #[test]
+    fn negative_numbers_get_commas_and_sign() {
+        assert_eq!(format_tokens_comma(-1), "-1");
+        assert_eq!(format_tokens_comma(-1_234), "-1,234");
+        assert_eq!(format_tokens_comma(-1_234_567), "-1,234,567");
+    }
+
+    #[test]
+    fn i64_min_does_not_panic() {
+        let _ = format_tokens_comma(i64::MIN);
+    }
 }

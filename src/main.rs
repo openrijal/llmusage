@@ -431,7 +431,8 @@ fn cmd_export(db: &db::Database, format: &str, output: Option<&str>, days: u32) 
     let rows = db.query_detail(None, None, Some(&since_str), None, None)?;
     let content = match format {
         "json" => display::to_json(&rows)?,
-        _ => display::to_csv(&rows)?,
+        "csv" => display::to_csv(&rows)?,
+        other => anyhow::bail!("Unknown export format: '{}'. Supported: csv, json", other),
     };
 
     match output {
