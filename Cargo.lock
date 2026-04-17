@@ -730,6 +730,7 @@ dependencies = [
  "clap",
  "colored",
  "dirs",
+ "libc",
  "reqwest",
  "rusqlite",
  "serde",

@@ -165,14 +165,71 @@ pub fn query_weekly(
     weeks: u32,
     provider: Option<&str>,
 ) -> Result<Vec<DailyRow>> {
-    // %G-W%V = ISO 8601 year + week number (Mon-based, 01..53).
-    // Requires SQLite >= 3.44 (rusqlite bundled build satisfies this).
-    query_grouped(
+    // SQLite's `%V`/`%G` strftime modifiers were added in SQLite 3.46 (May 2024).
+    // The bundled build in `rusqlite = 0.31` ships SQLite 3.45, where those
+    // modifiers silently return NULL and break row decoding. Instead, query
+    // per-day rows (portable on every SQLite version) and rebucket by ISO
+    // week in Rust using chrono's `iso_week`.
+    let daily = query_grouped(
         conn,
-        "strftime('%G-W%V', recorded_at)",
+        "DATE(recorded_at)",
         &format!("-{} days", weeks * 7),
         provider,
-    )
+    )?;
+    Ok(rebucket_daily_by_iso_week(daily))
+}
+
+fn rebucket_daily_by_iso_week(daily: Vec<DailyRow>) -> Vec<DailyRow> {
+    use chrono::{Datelike, NaiveDate};
+
+    // week_label -> (provider, model) -> accumulated ModelEntry
+    let mut buckets: BTreeMap<String, BTreeMap<(String, String), ModelEntry>> = BTreeMap::new();
+
+    for row in daily {
+        let Ok(date) = NaiveDate::parse_from_str(&row.date, "%Y-%m-%d") else {
+            // DATE(recorded_at) always yields YYYY-MM-DD; skip defensively if not.
+            continue;
+        };
+        let iw = date.iso_week();
+        let label = format!("{}-W{:02}", iw.year(), iw.week());
+        let week = buckets.entry(label).or_default();
+        for entry in row.model_entries {
+            let key = (entry.provider.clone(), entry.model.clone());
+            let agg = week.entry(key).or_insert_with(|| ModelEntry {
+                provider: entry.provider.clone(),
+                model: entry.model.clone(),
+                input_tokens: 0,
+                output_tokens: 0,
+                cost: 0.0,
+            });
+            agg.input_tokens += entry.input_tokens;
+            agg.output_tokens += entry.output_tokens;
+            agg.cost += entry.cost;
+        }
+    }
+
+    let mut out: Vec<DailyRow> = Vec::with_capacity(buckets.len());
+    for (label, entries_by_model) in buckets {
+        let mut row = DailyRow {
+            date: label,
+            models: Vec::new(),
+            model_entries: Vec::new(),
+            total_input: 0,
+            total_output: 0,
+            total_cost: 0.0,
+        };
+        for (_, entry) in entries_by_model {
+            if !row.models.contains(&entry.model) {
+                row.models.push(entry.model.clone());
+            }
+            row.total_input += entry.input_tokens;
+            row.total_output += entry.output_tokens;
+            row.total_cost += entry.cost;
+            row.model_entries.push(entry);
+        }
+        out.push(row);
+    }
+    out
 }
 
 pub fn query_monthly(
@@ -258,4 +315,76 @@ fn query_grouped(
     }
 
     Ok(map.into_values().collect())
+}
+
+#[cfg(test)]
+mod iso_week_tests {
+    use super::*;
+
+    fn day(date: &str, model: &str, input: i64, output: i64, cost: f64) -> DailyRow {
+        DailyRow {
+            date: date.to_string(),
+            models: vec![model.to_string()],
+            model_entries: vec![ModelEntry {
+                provider: "p".to_string(),
+                model: model.to_string(),
+                input_tokens: input,
+                output_tokens: output,
+                cost,
+            }],
+            total_input: input,
+            total_output: output,
+            total_cost: cost,
+        }
+    }
+
+    #[test]
+    fn groups_days_within_same_iso_week() {
+        // 2026-04-13 (Mon) through 2026-04-19 (Sun) = ISO week 16 of 2026.
+        let daily = vec![
+            day("2026-04-13", "m", 10, 5, 0.10),
+            day("2026-04-15", "m", 20, 5, 0.20),
+            day("2026-04-19", "m", 30, 10, 0.30),
+        ];
+        let weekly = rebucket_daily_by_iso_week(daily);
+        assert_eq!(weekly.len(), 1);
+        assert_eq!(weekly[0].date, "2026-W16");
+        assert_eq!(weekly[0].total_input, 60);
+        assert_eq!(weekly[0].total_output, 20);
+        assert!((weekly[0].total_cost - 0.60).abs() < 1e-9);
+    }
+
+    #[test]
+    fn splits_across_iso_weeks_at_monday_boundary() {
+        // Sunday 2026-04-12 = W15; Monday 2026-04-13 = W16.
+        let daily = vec![
+            day("2026-04-12", "m", 10, 0, 0.10),
+            day("2026-04-13", "m", 20, 0, 0.20),
+        ];
+        let weekly = rebucket_daily_by_iso_week(daily);
+        assert_eq!(weekly.len(), 2);
+        assert_eq!(weekly[0].date, "2026-W15");
+        assert_eq!(weekly[1].date, "2026-W16");
+    }
+
+    #[test]
+    fn january_first_2027_is_w53_of_2026() {
+        // 2027-01-01 is Friday; ISO week 53 of 2026.
+        let daily = vec![day("2027-01-01", "m", 1, 1, 0.01)];
+        let weekly = rebucket_daily_by_iso_week(daily);
+        assert_eq!(weekly[0].date, "2026-W53");
+    }
+
+    #[test]
+    fn merges_same_model_across_days_into_one_entry() {
+        let daily = vec![
+            day("2026-04-13", "m", 10, 5, 0.10),
+            day("2026-04-15", "m", 20, 5, 0.20),
+        ];
+        let weekly = rebucket_daily_by_iso_week(daily);
+        assert_eq!(weekly[0].model_entries.len(), 1);
+        let entry = &weekly[0].model_entries[0];
+        assert_eq!(entry.input_tokens, 30);
+        assert_eq!(entry.output_tokens, 10);
+    }
 }
