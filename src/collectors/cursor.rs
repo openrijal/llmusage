@@ -132,8 +132,11 @@ impl Collector for CursorCollector {
 }
 
 pub fn cursor_state_db_path() -> PathBuf {
-    dirs::config_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
+    cursor_state_db_path_from_config_dir(&dirs::config_dir().unwrap_or_else(|| PathBuf::from(".")))
+}
+
+fn cursor_state_db_path_from_config_dir(config_dir: &Path) -> PathBuf {
+    config_dir
         .join("Cursor")
         .join("User")
         .join("globalStorage")
@@ -317,6 +320,25 @@ mod tests {
 
     fn temp_file(name: &str) -> PathBuf {
         std::env::temp_dir().join(format!("llmusage-test-{}-{}", std::process::id(), name))
+    }
+
+    #[test]
+    fn cursor_state_path_is_relative_to_platform_config_dir() {
+        let macos = cursor_state_db_path_from_config_dir(Path::new(
+            "/Users/alice/Library/Application Support",
+        ));
+        assert_eq!(
+            macos,
+            PathBuf::from(
+                "/Users/alice/Library/Application Support/Cursor/User/globalStorage/state.vscdb"
+            )
+        );
+
+        let linux = cursor_state_db_path_from_config_dir(Path::new("/home/alice/.config"));
+        assert_eq!(
+            linux,
+            PathBuf::from("/home/alice/.config/Cursor/User/globalStorage/state.vscdb")
+        );
     }
 
     #[test]

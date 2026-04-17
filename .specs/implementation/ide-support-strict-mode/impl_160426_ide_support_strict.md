@@ -7,7 +7,7 @@ This change set adds strict-mode IDE support where a real token-bearing local so
 ## Cursor
 
 - Added `src/collectors/cursor.rs`.
-- Source: `~/Library/Application Support/Cursor/User/globalStorage/state.vscdb`.
+- Source: `<config_dir>/Cursor/User/globalStorage/state.vscdb` where `<config_dir>` is `~/Library/Application Support` on macOS and `~/.config` on Linux.
 - Implementation copies the live SQLite DB to `/tmp` before querying to avoid lock conflicts with a running Cursor instance.
 - Reads `cursorDiskKV` rows:
   - `composerData:*` for model configuration

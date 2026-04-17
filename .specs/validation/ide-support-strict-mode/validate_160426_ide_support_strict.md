@@ -15,6 +15,7 @@
 - **Coverage**:
   - parses Cursor bubble rows into `UsageRecord`
   - reads a copied temp Cursor SQLite DB and extracts one record
+  - resolves the Cursor state DB relative to the platform config directory on both macOS and Linux path layouts
 
 ## CLI Smoke Tests
 

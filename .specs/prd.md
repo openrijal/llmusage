@@ -37,7 +37,7 @@ Developers using multiple AI coding assistants (Claude Code, Codex, Cursor, Open
 │   Collectors         │  ← one per source, runs on-demand
 │   ├─ claude_code     │  ← ~/.claude/projects/**/*.jsonl
 │   ├─ codex           │  ← ~/.codex/archived_sessions/*.jsonl
-│   ├─ cursor          │  ← ~/Library/Application Support/Cursor/.../state.vscdb
+│   ├─ cursor          │  ← <config_dir>/Cursor/.../state.vscdb
 │   ├─ opencode        │  ← ~/.local/share/opencode/opencode.db
 │   ├─ gemini_cli      │  ← ~/.gemini/tmp/**/chats/*.jsonl
 │   ├─ anthropic       │  ← API: /v1/organizations/usage
@@ -91,7 +91,7 @@ A UNIQUE index on `(provider, model, input_tokens, output_tokens, cache_read_tok
 
 - **Claude Code**: Parses JSONL session logs from `~/.claude/projects/`. Extracts `message.usage` from assistant messages.
 - **Codex**: Parses JSONL from `~/.codex/archived_sessions/`. Extracts `token_count` events with `last_token_usage` deltas.
-- **Cursor**: Reads local SQLite state from Cursor's `state.vscdb` and extracts per-bubble token counts from persisted Cursor AI metadata.
+- **Cursor**: Reads local SQLite state from `<config_dir>/Cursor/User/globalStorage/state.vscdb` and extracts per-bubble token counts from persisted Cursor AI metadata.
 - **OpenCode**: Reads directly from SQLite at `~/.local/share/opencode/opencode.db`. Message data contains `tokens` and `cost` fields.
 - **Gemini CLI**: Parses JSONL chat session files under `~/.gemini/tmp/**/chats/`.
 
@@ -116,7 +116,7 @@ Pricing is stored as cost-per-token in LiteLLM format and converted to per-milli
 
 ## Configuration
 
-TOML config at `~/.config/llmusage/config.toml` (macOS: `~/Library/Application Support/llmusage/config.toml`).
+TOML config at `<config_dir>/llmusage/config.toml`, where `<config_dir>` resolves to `~/Library/Application Support` on macOS and `~/.config` on Linux.
 
 | Key | Description |
 |-----|-------------|

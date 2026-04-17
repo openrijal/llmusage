@@ -17,7 +17,7 @@ llmusage collects usage data from multiple AI sources — API dashboards, local 
 |----------|------|-----------------|
 | Claude Code | Local logs (`~/.claude/projects/`) | None (auto-detect) |
 | Codex | Local logs (`~/.codex/archived_sessions/`) | None (auto-detect) |
-| Cursor | Local SQLite (`~/Library/Application Support/Cursor/User/globalStorage/state.vscdb`) | None (auto-detect) |
+| Cursor | Local SQLite (`<config_dir>/Cursor/User/globalStorage/state.vscdb`) | None (auto-detect) |
 | OpenCode | Local SQLite (`~/.local/share/opencode/opencode.db`) | None (auto-detect) |
 | Gemini CLI / Antigravity | Local logs (`~/.gemini/tmp/`) | None (auto-detect) |
 | Anthropic API | REST API | `anthropic_api_key` |
@@ -168,6 +168,11 @@ llmusage config --set claude_code_enabled=false
 
 `llmusage config --list` also shows auto-detected local collectors and strict-mode unsupported local IDE tooling such as Windsurf and VS Code.
 
+For local SQLite IDE collectors that live under a platform config directory:
+
+- **macOS**: `<config_dir>` resolves to `~/Library/Application Support`
+- **Linux**: `<config_dir>` resolves to `~/.config`
+
 ### Update pricing
 
 Refresh the LiteLLM pricing cache (900+ models).
@@ -224,7 +229,7 @@ SQLite DB (dedup index, WAL mode)
 Collectors (one per source, async)
   ├── claude_code   ~/.claude/projects/**/*.jsonl
   ├── codex         ~/.codex/archived_sessions/*.jsonl
-  ├── cursor        ~/Library/Application Support/Cursor/.../state.vscdb
+  ├── cursor        <config_dir>/Cursor/.../state.vscdb
   ├── opencode      ~/.local/share/opencode/opencode.db
   ├── gemini_cli    ~/.gemini/tmp/**/chats/*.jsonl
   ├── anthropic     /v1/organizations/usage
