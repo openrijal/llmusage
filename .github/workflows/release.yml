@@ -126,6 +126,11 @@ jobs:
           args: --output CHANGELOG.md
 
       - name: Commit CHANGELOG.md back to main
+        # Non-fatal: if branch protection rejects the push (rule requires PR),
+        # let the release continue. The maintainer can update CHANGELOG.md
+        # manually after the release, or we'll switch to a PR-based update
+        # flow in a follow-up.
+        continue-on-error: true
         run: |
           # If nothing changed vs. the current tree, there's nothing to commit.
           if git diff --quiet -- CHANGELOG.md; then
