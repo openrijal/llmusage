@@ -330,7 +330,7 @@ fn cmd_detail(
     until: Option<&str>,
     limit: usize,
 ) -> Result<()> {
-    let rows = db.query_detail(model, provider, since, until, limit)?;
+    let rows = db.query_detail(model, provider, since, until, Some(limit))?;
     display::print_detail(&rows);
     Ok(())
 }
@@ -367,7 +367,7 @@ async fn cmd_update_pricing() -> Result<()> {
 fn cmd_export(db: &db::Database, format: &str, output: Option<&str>, days: u32) -> Result<()> {
     let since = chrono::Utc::now() - chrono::Duration::days(days as i64);
     let since_str = since.format("%Y-%m-%d").to_string();
-    let rows = db.query_detail(None, None, Some(&since_str), None, 100_000)?;
+    let rows = db.query_detail(None, None, Some(&since_str), None, None)?;
     let content = match format {
         "json" => display::to_json(&rows)?,
         _ => display::to_csv(&rows)?,

@@ -89,7 +89,7 @@ pub fn query_detail(
     provider: Option<&str>,
     since: Option<&str>,
     until: Option<&str>,
-    limit: usize,
+    limit: Option<usize>,
 ) -> Result<Vec<UsageRecord>> {
     let mut sql = String::from("SELECT * FROM usage_records WHERE 1=1");
     let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> = vec![];
@@ -119,7 +119,10 @@ pub fn query_detail(
         param_values.push(Box::new(until_val));
     }
 
-    sql.push_str(&format!(" ORDER BY recorded_at DESC LIMIT {}", limit));
+    sql.push_str(" ORDER BY recorded_at DESC");
+    if let Some(n) = limit {
+        sql.push_str(&format!(" LIMIT {}", n));
+    }
 
     let params_refs: Vec<&dyn rusqlite::types::ToSql> =
         param_values.iter().map(|p| p.as_ref()).collect();
