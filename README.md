@@ -17,12 +17,19 @@ llmusage collects usage data from multiple AI sources — API dashboards, local 
 |----------|------|-----------------|
 | Claude Code | Local logs (`~/.claude/projects/`) | None (auto-detect) |
 | Codex | Local logs (`~/.codex/archived_sessions/`) | None (auto-detect) |
+| Cursor | Local SQLite (`<config_dir>/Cursor/User/globalStorage/state.vscdb`) | None (auto-detect) |
 | OpenCode | Local SQLite (`~/.local/share/opencode/opencode.db`) | None (auto-detect) |
-| Gemini CLI | Local logs (`~/.gemini/`) | None (stub) |
+| Gemini CLI / Antigravity | Local logs (`~/.gemini/tmp/`) | None (auto-detect) |
 | Anthropic API | REST API | `anthropic_api_key` |
 | OpenAI API | REST API | `openai_api_key` |
 | Gemini API | REST API | `gemini_api_key` (stub) |
 | Ollama | REST API | None (defaults to `localhost:11434`) |
+
+**Strict-mode limitations:**
+
+- `windsurf` is intentionally not supported yet. The local artifacts investigated on macOS did not expose reliable token counts.
+- `vscode` is intentionally not supported as a generic collector. Installed AI extensions exposed session/model metadata, but not token counts.
+- `antigravity` is accepted as a provider alias for `gemini_cli`. Legacy Antigravity `.pb` sessions remain unsupported; only Gemini CLI JSONL sessions are collected.
 
 ## Installation
 
@@ -94,6 +101,7 @@ Pull usage data from all configured and auto-detected providers.
 ```bash
 llmusage sync                    # all providers
 llmusage sync --provider claude_code  # specific provider only
+llmusage sync --provider antigravity  # alias for gemini_cli
 ```
 
 ### Summary
@@ -158,6 +166,13 @@ llmusage config --set ollama_host=http://192.168.1.10:11434
 llmusage config --set claude_code_enabled=false
 ```
 
+`llmusage config --list` also shows auto-detected local collectors and strict-mode unsupported local IDE tooling such as Windsurf and VS Code.
+
+For local SQLite IDE collectors that live under a platform config directory:
+
+- **macOS**: `<config_dir>` resolves to `~/Library/Application Support`
+- **Linux**: `<config_dir>` resolves to `~/.config`
+
 ### Update pricing
 
 Refresh the LiteLLM pricing cache (900+ models).
@@ -214,8 +229,9 @@ SQLite DB (dedup index, WAL mode)
 Collectors (one per source, async)
   ├── claude_code   ~/.claude/projects/**/*.jsonl
   ├── codex         ~/.codex/archived_sessions/*.jsonl
+  ├── cursor        <config_dir>/Cursor/.../state.vscdb
   ├── opencode      ~/.local/share/opencode/opencode.db
-  ├── gemini_cli    ~/.gemini/ (stub)
+  ├── gemini_cli    ~/.gemini/tmp/**/chats/*.jsonl
   ├── anthropic     /v1/organizations/usage
   ├── openai        /v1/organization/usage
   ├── gemini        (stub)

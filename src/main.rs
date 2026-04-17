@@ -139,14 +139,19 @@ async fn main() -> Result<()> {
 
     match cli.command {
         Commands::Sync { provider } => {
-            cmd_sync(&cfg, &db, provider.as_deref()).await?;
+            cmd_sync(&cfg, &db, canonical_provider_filter(provider.as_deref())).await?;
         }
         Commands::Summary {
             days,
             provider,
             model,
         } => {
-            cmd_summary(&db, days, provider.as_deref(), model.as_deref())?;
+            cmd_summary(
+                &db,
+                days,
+                canonical_provider_filter(provider.as_deref()),
+                model.as_deref(),
+            )?;
         }
         Commands::Daily {
             days,
@@ -154,7 +159,13 @@ async fn main() -> Result<()> {
             json,
             all,
         } => {
-            cmd_daily(&db, days, provider.as_deref(), json, all)?;
+            cmd_daily(
+                &db,
+                days,
+                canonical_provider_filter(provider.as_deref()),
+                json,
+                all,
+            )?;
         }
         Commands::Weekly {
             weeks,
@@ -162,7 +173,13 @@ async fn main() -> Result<()> {
             json,
             all,
         } => {
-            cmd_weekly(&db, weeks, provider.as_deref(), json, all)?;
+            cmd_weekly(
+                &db,
+                weeks,
+                canonical_provider_filter(provider.as_deref()),
+                json,
+                all,
+            )?;
         }
         Commands::Monthly {
             months,
@@ -170,7 +187,13 @@ async fn main() -> Result<()> {
             json,
             all,
         } => {
-            cmd_monthly(&db, months, provider.as_deref(), json, all)?;
+            cmd_monthly(
+                &db,
+                months,
+                canonical_provider_filter(provider.as_deref()),
+                json,
+                all,
+            )?;
         }
         Commands::Detail {
             model,
@@ -182,14 +205,14 @@ async fn main() -> Result<()> {
             cmd_detail(
                 &db,
                 model.as_deref(),
-                provider.as_deref(),
+                canonical_provider_filter(provider.as_deref()),
                 since.as_deref(),
                 until.as_deref(),
                 limit,
             )?;
         }
         Commands::Models { provider } => {
-            cmd_models(provider.as_deref())?;
+            cmd_models(canonical_provider_filter(provider.as_deref()))?;
         }
         Commands::UpdatePricing => {
             cmd_update_pricing().await?;
@@ -232,11 +255,18 @@ async fn cmd_sync(
     let providers = collectors::get_collectors(cfg, provider_filter)?;
 
     if providers.is_empty() {
-        println!(
-            "{}",
-            "No providers configured. Run `llmusage config --set anthropic_api_key=sk-...`"
-                .yellow()
-        );
+        if let Some(filter) = provider_filter {
+            println!(
+                "{}",
+                collectors::explain_provider_filter(cfg, filter).yellow()
+            );
+        } else {
+            println!(
+                "{}",
+                "No providers configured. Run `llmusage config --set anthropic_api_key=sk-...`"
+                    .yellow()
+            );
+        }
         return Ok(());
     }
 
@@ -342,6 +372,8 @@ fn cmd_models(provider: Option<&str>) -> Result<()> {
 }
 
 fn cmd_config(cfg: &config::Config, set: Option<&str>, _list: bool) -> Result<()> {
+    use colored::Colorize;
+
     if let Some(kv) = set {
         let (key, value) = kv
             .split_once('=')
@@ -350,8 +382,37 @@ fn cmd_config(cfg: &config::Config, set: Option<&str>, _list: bool) -> Result<()
         println!("Set {} = {}", key.trim(), value.trim());
     } else {
         config::print_config(cfg);
+        println!();
+        println!("{}", "Local collectors (auto-detected):".bold());
+        for status in collectors::local_collector_statuses() {
+            let label = match status.state {
+                collectors::LocalCollectorState::Detected => "detected".green(),
+                collectors::LocalCollectorState::NotFound => "not found".dimmed(),
+                collectors::LocalCollectorState::Unsupported => "unsupported".yellow(),
+            };
+            if let Some(note) = status.note {
+                println!(
+                    "  {:<12} {} ({}) - {}",
+                    status.name,
+                    label,
+                    status.path.display(),
+                    note
+                );
+            } else {
+                println!(
+                    "  {:<12} {} ({})",
+                    status.name,
+                    label,
+                    status.path.display()
+                );
+            }
+        }
     }
     Ok(())
+}
+
+fn canonical_provider_filter(provider: Option<&str>) -> Option<&str> {
+    provider.map(collectors::canonical_provider_name)
 }
 
 async fn cmd_update_pricing() -> Result<()> {
