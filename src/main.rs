@@ -131,8 +131,25 @@ enum Commands {
     },
 }
 
+/// Rust's stdlib sets `SIGPIPE` to `SIG_IGN` at startup, so writes to a closed
+/// pipe (e.g. `llmusage export | head`) turn into `EPIPE` errors — and
+/// `println!` then panics. For a CLI the natural behavior is silent termination
+/// when the reader goes away, matching `cat`, `grep`, etc.
+#[cfg(unix)]
+fn reset_sigpipe() {
+    // SAFETY: setting a signal handler to SIG_DFL is always safe and has no
+    // undefined behavior.
+    unsafe {
+        libc::signal(libc::SIGPIPE, libc::SIG_DFL);
+    }
+}
+
+#[cfg(not(unix))]
+fn reset_sigpipe() {}
+
 #[tokio::main]
 async fn main() -> Result<()> {
+    reset_sigpipe();
     let cli = Cli::parse();
     let cfg = config::load_config()?;
     let db = db::Database::open(&cfg.db_path)?;

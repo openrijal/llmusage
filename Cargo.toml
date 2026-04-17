@@ -29,3 +29,6 @@ serde_json = "1"
 tabled = "0.16"
 tokio = { version = "1", features = ["full"] }
 toml = "0.8"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
