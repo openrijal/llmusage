@@ -180,19 +180,30 @@ pub fn filter_daily_rows(rows: &[DailyRow], show_all: bool) -> Vec<DailyRow> {
                 .filter(|e| e.input_tokens != 0 || e.output_tokens != 0 || e.cost != 0.0)
                 .cloned()
                 .collect();
-            let models: Vec<String> = filtered
-                .iter()
-                .map(|e| e.model.clone())
-                .collect::<std::collections::HashSet<_>>()
-                .into_iter()
-                .collect();
+
+            // Preserve first-seen ordering of model names (HashSet loses order and
+            // breaks JSON export determinism).
+            let mut seen = std::collections::HashSet::new();
+            let mut models: Vec<String> = Vec::new();
+            for entry in &filtered {
+                if seen.insert(entry.model.clone()) {
+                    models.push(entry.model.clone());
+                }
+            }
+
+            // Recompute totals from the visible entries so the table totals row
+            // matches the sum of displayed rows (#48).
+            let total_input: i64 = filtered.iter().map(|e| e.input_tokens).sum();
+            let total_output: i64 = filtered.iter().map(|e| e.output_tokens).sum();
+            let total_cost: f64 = filtered.iter().map(|e| e.cost).sum();
+
             DailyRow {
                 date: r.date.clone(),
                 models,
                 model_entries: filtered,
-                total_input: r.total_input,
-                total_output: r.total_output,
-                total_cost: r.total_cost,
+                total_input,
+                total_output,
+                total_cost,
             }
         })
         .collect()
@@ -473,6 +484,19 @@ pub fn print_models(models: &[ModelPricing]) {
     print_table_colored(&table);
 }
 
+/// RFC 4180 CSV field escaping: quote fields that contain commas, quotes, CR,
+/// or LF; escape embedded quotes by doubling them.
+fn csv_escape(field: &str) -> String {
+    let needs_quoting = field
+        .bytes()
+        .any(|b| matches!(b, b',' | b'"' | b'\n' | b'\r'));
+    if !needs_quoting {
+        return field.to_string();
+    }
+    let escaped = field.replace('"', "\"\"");
+    format!("\"{}\"", escaped)
+}
+
 pub fn to_csv(rows: &[UsageRecord]) -> anyhow::Result<String> {
     let mut out = String::from(
         "provider,model,input_tokens,output_tokens,cache_read,cache_write,cost_usd,recorded_at\n",
@@ -480,14 +504,14 @@ pub fn to_csv(rows: &[UsageRecord]) -> anyhow::Result<String> {
     for r in rows {
         out.push_str(&format!(
             "{},{},{},{},{},{},{},{}\n",
-            r.provider,
-            r.model,
+            csv_escape(&r.provider),
+            csv_escape(&r.model),
             r.input_tokens,
             r.output_tokens,
             r.cache_read_tokens,
             r.cache_write_tokens,
             r.cost_usd.unwrap_or(0.0),
-            r.recorded_at,
+            csv_escape(&r.recorded_at),
         ));
     }
     Ok(out)
@@ -578,6 +602,123 @@ fn strip_date_suffix(s: &str) -> &str {
         }
     }
     s
+}
+
+#[cfg(test)]
+mod csv_and_filter_tests {
+    use super::*;
+    use crate::models::{DailyRow, ModelEntry, UsageRecord};
+
+    fn rec(provider: &str, model: &str, recorded_at: &str) -> UsageRecord {
+        UsageRecord {
+            id: None,
+            provider: provider.to_string(),
+            model: model.to_string(),
+            input_tokens: 10,
+            output_tokens: 20,
+            cache_read_tokens: 0,
+            cache_write_tokens: 0,
+            cost_usd: Some(0.5),
+            session_id: None,
+            recorded_at: recorded_at.to_string(),
+            collected_at: "2026-04-17T00:00:00Z".to_string(),
+            metadata: None,
+        }
+    }
+
+    #[test]
+    fn csv_escape_plain_field_not_quoted() {
+        assert_eq!(csv_escape("gpt-4o"), "gpt-4o");
+    }
+
+    #[test]
+    fn csv_escape_comma_gets_quoted() {
+        assert_eq!(csv_escape("foo,bar"), "\"foo,bar\"");
+    }
+
+    #[test]
+    fn csv_escape_quotes_are_doubled() {
+        assert_eq!(csv_escape("he said \"hi\""), "\"he said \"\"hi\"\"\"");
+    }
+
+    #[test]
+    fn csv_escape_newline_gets_quoted() {
+        assert_eq!(csv_escape("line1\nline2"), "\"line1\nline2\"");
+        assert_eq!(csv_escape("line1\r\nline2"), "\"line1\r\nline2\"");
+    }
+
+    #[test]
+    fn to_csv_escapes_tricky_provider_and_model() {
+        let rows = vec![rec("acme,co", "weird\"model", "2026-04-17T12:00:00Z")];
+        let csv = to_csv(&rows).unwrap();
+        let line = csv.lines().nth(1).unwrap();
+        assert!(line.starts_with("\"acme,co\",\"weird\"\"model\","));
+    }
+
+    fn entry(model: &str, input: i64, output: i64, cost: f64) -> ModelEntry {
+        ModelEntry {
+            provider: "p".to_string(),
+            model: model.to_string(),
+            input_tokens: input,
+            output_tokens: output,
+            cost,
+        }
+    }
+
+    #[test]
+    fn filter_daily_rows_recomputes_totals_from_visible_entries() {
+        let row = DailyRow {
+            date: "2026-04-17".to_string(),
+            models: vec!["a".to_string(), "b".to_string()],
+            model_entries: vec![entry("a", 100, 50, 0.25), entry("b", 0, 0, 0.0)],
+            total_input: 100,
+            total_output: 50,
+            total_cost: 0.25,
+        };
+        let filtered = filter_daily_rows(&[row], false);
+        let out = &filtered[0];
+        assert_eq!(out.model_entries.len(), 1);
+        assert_eq!(out.total_input, 100);
+        assert_eq!(out.total_output, 50);
+        assert!((out.total_cost - 0.25).abs() < 1e-9);
+        assert_eq!(out.models, vec!["a".to_string()]);
+    }
+
+    #[test]
+    fn filter_daily_rows_preserves_first_seen_model_order() {
+        let row = DailyRow {
+            date: "d".to_string(),
+            models: vec![],
+            model_entries: vec![
+                entry("zeta", 1, 1, 0.1),
+                entry("alpha", 2, 2, 0.2),
+                entry("zeta", 3, 3, 0.3),
+            ],
+            total_input: 0,
+            total_output: 0,
+            total_cost: 0.0,
+        };
+        let filtered = filter_daily_rows(&[row], false);
+        assert_eq!(
+            filtered[0].models,
+            vec!["zeta".to_string(), "alpha".to_string()]
+        );
+    }
+
+    #[test]
+    fn filter_daily_rows_show_all_returns_unchanged() {
+        let row = DailyRow {
+            date: "d".to_string(),
+            models: vec!["a".to_string()],
+            model_entries: vec![entry("a", 0, 0, 0.0)],
+            total_input: 999,
+            total_output: 888,
+            total_cost: 7.0,
+        };
+        let filtered = filter_daily_rows(std::slice::from_ref(&row), true);
+        assert_eq!(filtered[0].total_input, 999);
+        assert_eq!(filtered[0].total_output, 888);
+    }
 }
 
 #[cfg(test)]

@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::OnceLock;
 
 use anyhow::Result;
 use serde::Deserialize;
@@ -52,11 +53,24 @@ pub async fn update_pricing_cache() -> Result<()> {
     Ok(())
 }
 
-/// Load cached pricing data. Returns None if no cache exists.
-fn load_cached_pricing() -> Option<HashMap<String, LiteLLMEntry>> {
-    let path = cache_path();
-    let content = std::fs::read_to_string(path).ok()?;
-    serde_json::from_str(&content).ok()
+/// Process-lifetime cache of the parsed LiteLLM pricing file.
+///
+/// Reading and parsing the ~2MB JSON on every `calculate_cost` call was the
+/// dominant cost during sync (#32). We load at most once per process — the
+/// file only changes when `update_pricing_cache` is invoked, which happens as
+/// a separate CLI command.
+static PRICING_CACHE: OnceLock<Option<HashMap<String, LiteLLMEntry>>> = OnceLock::new();
+
+/// Load cached pricing data. Returns None if no cache file exists or it fails
+/// to parse. Subsequent calls reuse the in-memory result.
+fn load_cached_pricing() -> Option<&'static HashMap<String, LiteLLMEntry>> {
+    PRICING_CACHE
+        .get_or_init(|| {
+            let path = cache_path();
+            let content = std::fs::read_to_string(path).ok()?;
+            serde_json::from_str(&content).ok()
+        })
+        .as_ref()
 }
 
 /// Map LiteLLM provider names to our provider names.
@@ -88,7 +102,7 @@ pub fn get_model_pricing(provider_filter: Option<&str>) -> Vec<ModelPricing> {
     };
 
     let mut models: Vec<ModelPricing> = entries
-        .into_iter()
+        .iter()
         .filter_map(|(model_key, entry)| {
             // Only include chat models with token pricing
             let mode = entry.mode.as_deref().unwrap_or("");
@@ -111,7 +125,7 @@ pub fn get_model_pricing(provider_filter: Option<&str>) -> Vec<ModelPricing> {
             // Convert per-token to per-million-token for display
             Some(ModelPricing {
                 provider: provider.to_string(),
-                model: model_key,
+                model: model_key.clone(),
                 input_per_mtok: input_per_token * 1_000_000.0,
                 output_per_mtok: output_per_token * 1_000_000.0,
                 cache_read_per_mtok: entry.cache_read_input_token_cost.map(|c| c * 1_000_000.0),
