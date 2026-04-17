@@ -34,9 +34,15 @@ impl CursorCollector {
 }
 
 #[derive(Debug, Deserialize)]
-struct ComposerData {
+struct ComposerDataFull {
     #[serde(default, rename = "modelConfig")]
     model_config: Option<ModelConfig>,
+    #[serde(default, rename = "createdAt")]
+    created_at: Option<serde_json::Value>,
+    #[serde(default, rename = "lastUpdatedAt")]
+    last_updated_at: Option<serde_json::Value>,
+    #[serde(default)]
+    name: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -51,17 +57,9 @@ struct BubbleData {
     token_count: Option<TokenCount>,
     #[serde(default, rename = "timingInfo")]
     timing_info: Option<TimingInfo>,
-    #[serde(default, rename = "usageUuid")]
-    usage_uuid: Option<String>,
-    #[serde(default, rename = "serverBubbleId")]
-    server_bubble_id: Option<String>,
-    #[serde(default)]
-    text: Option<String>,
-    #[serde(default, rename = "isAgentic")]
-    is_agentic: Option<bool>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone, Copy, Default)]
 struct TokenCount {
     #[serde(default, rename = "inputTokens")]
     input_tokens: i64,
@@ -77,6 +75,22 @@ struct TimingInfo {
     client_settle_time: Option<i64>,
     #[serde(default, rename = "clientStartTime")]
     client_start_time: Option<i64>,
+}
+
+struct ComposerInfo {
+    model: Option<String>,
+    created_at_ms: Option<i64>,
+    last_updated_at_ms: Option<i64>,
+    name: Option<String>,
+}
+
+#[derive(Default)]
+struct ComposerAggregate {
+    input_tokens: i64,
+    output_tokens: i64,
+    bubble_count: usize,
+    nonzero_bubble_count: usize,
+    latest_ms: Option<i64>,
 }
 
 #[async_trait]
@@ -98,35 +112,94 @@ impl Collector for CursorCollector {
             return Ok(vec![]);
         }
 
-        let model_names = load_model_names(&conn)?;
-        let mut stmt = conn.prepare(
-            "SELECT key, CAST(value AS TEXT)
-             FROM cursorDiskKV
-             WHERE key LIKE 'bubbleId:%'
-               AND (
-                 COALESCE(json_extract(CAST(value AS TEXT), '$.tokenCount.inputTokens'), 0) > 0
-                 OR COALESCE(json_extract(CAST(value AS TEXT), '$.tokenCount.outputTokens'), 0) > 0
-               )",
-        )?;
+        let composers = load_composers(&conn)?;
+        let aggregates = aggregate_bubbles(&conn)?;
 
-        let rows = stmt.query_map([], |row| {
-            let key: String = row.get(0)?;
-            let payload: Option<String> = row.get(1)?;
-            Ok((key, payload))
-        })?;
+        let mut records: Vec<UsageRecord> = Vec::new();
+        let mut zero_token_records: usize = 0;
 
-        let mut records = Vec::new();
-        for row in rows {
-            let (key, payload) = row?;
-            let Some(payload) = payload else {
+        for (composer_id, agg) in &aggregates {
+            // Skip composers with no bubbles at all — these are empty drafts,
+            // not real conversations worth tracking.
+            if agg.bubble_count == 0 {
+                continue;
+            }
+
+            let composer = composers.get(composer_id);
+            let raw_model = composer
+                .and_then(|c| c.model.clone())
+                .filter(|m| !m.trim().is_empty());
+            // Cursor uses "default" internally for Auto-mode. Rename so it's
+            // readable in reports and doesn't accidentally pick up pricing for
+            // an unrelated upstream model called "default".
+            let model = match raw_model.as_deref() {
+                Some("default") | None => "cursor-default".to_string(),
+                Some(other) => other.to_string(),
+            };
+
+            let cost_usd = infer_priced_provider(&model).and_then(|provider| {
+                costs::calculate_cost(&model, provider, agg.input_tokens, agg.output_tokens, 0, 0)
+            });
+
+            if agg.input_tokens == 0 && agg.output_tokens == 0 {
+                zero_token_records += 1;
+            }
+
+            // Must have a stable timestamp — otherwise dedup against future
+            // syncs breaks (collected_at changes every run). Skip composers
+            // we can't attribute to a point in time.
+            let Some(recorded_at_ms) = composer
+                .and_then(|c| c.created_at_ms.or(c.last_updated_at_ms))
+                .or(agg.latest_ms)
+            else {
                 continue;
             };
-            if let Some(record) = parse_bubble_row(&key, &payload, &collected_at, &model_names)? {
-                records.push(record);
-            }
+            let Some(recorded_at) =
+                DateTime::from_timestamp_millis(recorded_at_ms).map(|dt| dt.to_rfc3339())
+            else {
+                continue;
+            };
+
+            let metadata = serde_json::to_string(&serde_json::json!({
+                "composer_id": composer_id,
+                "name": composer.and_then(|c| c.name.clone()),
+                "bubble_count": agg.bubble_count,
+                "nonzero_token_bubble_count": agg.nonzero_bubble_count,
+            }))
+            .ok();
+
+            records.push(UsageRecord {
+                id: None,
+                provider: "cursor".to_string(),
+                model,
+                input_tokens: agg.input_tokens,
+                output_tokens: agg.output_tokens,
+                cache_read_tokens: 0,
+                cache_write_tokens: 0,
+                cost_usd,
+                session_id: Some(composer_id.clone()),
+                recorded_at,
+                collected_at: collected_at.clone(),
+                metadata,
+            });
         }
 
+        // Sort oldest → newest so detail views make chronological sense.
+        records.sort_by(|a, b| a.recorded_at.cmp(&b.recorded_at));
+
         let _ = std::fs::remove_file(temp_db);
+
+        if !records.is_empty() && zero_token_records == records.len() {
+            eprintln!(
+                "cursor: found {} conversation(s) but none recorded token counts. \
+                 Cursor 3.x does not persist token counts locally — usage lives in the \
+                 Cursor dashboard. Tokens will show as 0 and costs will be unavailable \
+                 until a usage-API integration is added. For older Cursor versions, this \
+                 can also mean plan-gate errors blocked the requests.",
+                records.len()
+            );
+        }
+
         Ok(records)
     }
 }
@@ -144,8 +217,18 @@ fn cursor_state_db_path_from_config_dir(config_dir: &Path) -> PathBuf {
 }
 
 fn copy_to_temp(source: &Path, suffix: &str) -> Result<PathBuf> {
-    let temp_path =
-        std::env::temp_dir().join(format!("llmusage-{}-{}", std::process::id(), suffix));
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+    // Include pid + per-thread + monotonic counter so parallel collects
+    // (including parallel tests) never share a temp file.
+    let temp_path = std::env::temp_dir().join(format!(
+        "llmusage-{}-{:?}-{}-{}",
+        std::process::id(),
+        std::thread::current().id(),
+        n,
+        suffix
+    ));
     std::fs::copy(source, &temp_path)?;
     Ok(temp_path)
 }
@@ -163,8 +246,8 @@ fn has_cursor_disk_kv(conn: &Connection) -> Result<bool> {
     Ok(exists == 1)
 }
 
-fn load_model_names(conn: &Connection) -> Result<HashMap<String, String>> {
-    let mut model_names = HashMap::new();
+fn load_composers(conn: &Connection) -> Result<HashMap<String, ComposerInfo>> {
+    let mut out = HashMap::new();
     let mut stmt = conn.prepare(
         "SELECT key, CAST(value AS TEXT)
          FROM cursorDiskKV
@@ -184,106 +267,90 @@ fn load_model_names(conn: &Connection) -> Result<HashMap<String, String>> {
         let Some(composer_id) = key.strip_prefix("composerData:") else {
             continue;
         };
-        let parsed: ComposerData = match serde_json::from_str(&payload) {
+        let parsed: ComposerDataFull = match serde_json::from_str(&payload) {
             Ok(value) => value,
             Err(_) => continue,
         };
-        if let Some(model_name) = parsed
+        let model = parsed
             .model_config
             .and_then(|cfg| cfg.model_name)
-            .filter(|name| !name.trim().is_empty())
-        {
-            model_names.insert(composer_id.to_string(), model_name);
+            .filter(|name| !name.trim().is_empty());
+        let created_at_ms = parse_timestamp_ms(parsed.created_at.as_ref());
+        let last_updated_at_ms = parse_timestamp_ms(parsed.last_updated_at.as_ref());
+        out.insert(
+            composer_id.to_string(),
+            ComposerInfo {
+                model,
+                created_at_ms,
+                last_updated_at_ms,
+                name: parsed.name,
+            },
+        );
+    }
+
+    Ok(out)
+}
+
+fn aggregate_bubbles(conn: &Connection) -> Result<HashMap<String, ComposerAggregate>> {
+    let mut out: HashMap<String, ComposerAggregate> = HashMap::new();
+    let mut stmt = conn.prepare(
+        "SELECT key, CAST(value AS TEXT)
+         FROM cursorDiskKV
+         WHERE key LIKE 'bubbleId:%'",
+    )?;
+    let rows = stmt.query_map([], |row| {
+        let key: String = row.get(0)?;
+        let payload: Option<String> = row.get(1)?;
+        Ok((key, payload))
+    })?;
+
+    for row in rows {
+        let (key, payload) = row?;
+        let Some(payload) = payload else {
+            continue;
+        };
+        let Some(raw_ids) = key.strip_prefix("bubbleId:") else {
+            continue;
+        };
+        let Some((composer_id, _bubble_id)) = raw_ids.split_once(':') else {
+            continue;
+        };
+        let parsed: BubbleData = match serde_json::from_str(&payload) {
+            Ok(value) => value,
+            Err(_) => continue,
+        };
+
+        let entry = out.entry(composer_id.to_string()).or_default();
+        entry.bubble_count += 1;
+        let tokens = parsed.token_count.unwrap_or_default();
+        if tokens.input_tokens != 0 || tokens.output_tokens != 0 {
+            entry.nonzero_bubble_count += 1;
+            entry.input_tokens += tokens.input_tokens;
+            entry.output_tokens += tokens.output_tokens;
+        }
+        if let Some(ts) = bubble_latest_ms(&parsed) {
+            entry.latest_ms = Some(entry.latest_ms.map_or(ts, |cur| cur.max(ts)));
         }
     }
 
-    Ok(model_names)
+    Ok(out)
 }
 
-fn parse_bubble_row(
-    key: &str,
-    payload: &str,
-    collected_at: &str,
-    model_names: &HashMap<String, String>,
-) -> Result<Option<UsageRecord>> {
-    let Some(raw_ids) = key.strip_prefix("bubbleId:") else {
-        return Ok(None);
-    };
-    let Some((composer_id, bubble_id)) = raw_ids.split_once(':') else {
-        return Ok(None);
-    };
+fn bubble_latest_ms(b: &BubbleData) -> Option<i64> {
+    let t = b.timing_info.as_ref()?;
+    t.client_end_time
+        .or(t.client_settle_time)
+        .or(t.client_start_time)
+}
 
-    let parsed: BubbleData = match serde_json::from_str(payload) {
-        Ok(value) => value,
-        Err(_) => return Ok(None),
-    };
-
-    let Some(token_count) = parsed.token_count.as_ref() else {
-        return Ok(None);
-    };
-    if token_count.input_tokens == 0 && token_count.output_tokens == 0 {
-        return Ok(None);
+fn parse_timestamp_ms(value: Option<&serde_json::Value>) -> Option<i64> {
+    match value? {
+        serde_json::Value::Number(n) => n.as_i64(),
+        serde_json::Value::String(s) => DateTime::parse_from_rfc3339(s)
+            .ok()
+            .map(|dt| dt.timestamp_millis()),
+        _ => None,
     }
-
-    let model = model_names
-        .get(composer_id)
-        .cloned()
-        .unwrap_or_else(|| "cursor-default".to_string());
-    let recorded_at = bubble_recorded_at(&parsed).unwrap_or_else(|| Utc::now().to_rfc3339());
-    let cost_usd = infer_priced_provider(&model).and_then(|provider| {
-        costs::calculate_cost(
-            &model,
-            provider,
-            token_count.input_tokens,
-            token_count.output_tokens,
-            0,
-            0,
-        )
-    });
-    let metadata = serde_json::to_string(&serde_json::json!({
-        "bubble_id": bubble_id,
-        "usage_uuid": parsed.usage_uuid,
-        "server_bubble_id": parsed.server_bubble_id,
-        "is_agentic": parsed.is_agentic,
-        "preview": parsed.text.as_deref().map(trim_preview),
-    }))
-    .ok();
-
-    Ok(Some(UsageRecord {
-        id: None,
-        provider: "cursor".to_string(),
-        model,
-        input_tokens: token_count.input_tokens,
-        output_tokens: token_count.output_tokens,
-        cache_read_tokens: 0,
-        cache_write_tokens: 0,
-        cost_usd,
-        session_id: Some(composer_id.to_string()),
-        recorded_at,
-        collected_at: collected_at.to_string(),
-        metadata,
-    }))
-}
-
-fn bubble_recorded_at(parsed: &BubbleData) -> Option<String> {
-    let millis = parsed
-        .timing_info
-        .as_ref()
-        .and_then(|info| info.client_end_time)
-        .or_else(|| {
-            parsed
-                .timing_info
-                .as_ref()
-                .and_then(|info| info.client_settle_time)
-        })
-        .or_else(|| {
-            parsed
-                .timing_info
-                .as_ref()
-                .and_then(|info| info.client_start_time)
-        })?;
-
-    DateTime::from_timestamp_millis(millis).map(|ts| ts.to_rfc3339())
 }
 
 fn infer_priced_provider(model: &str) -> Option<&'static str> {
@@ -302,24 +369,54 @@ fn infer_priced_provider(model: &str) -> Option<&'static str> {
     }
 }
 
-fn trim_preview(text: &str) -> String {
-    const LIMIT: usize = 160;
-    let trimmed = text.trim();
-    if trimmed.chars().count() <= LIMIT {
-        trimmed.to_string()
-    } else {
-        let preview: String = trimmed.chars().take(LIMIT).collect();
-        format!("{}...", preview)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::fs;
 
     fn temp_file(name: &str) -> PathBuf {
-        std::env::temp_dir().join(format!("llmusage-test-{}-{}", std::process::id(), name))
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+        std::env::temp_dir().join(format!(
+            "llmusage-cursor-test-{}-{:?}-{}-{}",
+            std::process::id(),
+            std::thread::current().id(),
+            n,
+            name
+        ))
+    }
+
+    fn insert_composer(conn: &Connection, composer_id: &str, payload: serde_json::Value) {
+        conn.execute(
+            "INSERT INTO cursorDiskKV (key, value) VALUES (?1, ?2)",
+            (format!("composerData:{}", composer_id), payload.to_string()),
+        )
+        .unwrap();
+    }
+
+    fn insert_bubble(
+        conn: &Connection,
+        composer_id: &str,
+        bubble_id: &str,
+        payload: serde_json::Value,
+    ) {
+        conn.execute(
+            "INSERT INTO cursorDiskKV (key, value) VALUES (?1, ?2)",
+            (
+                format!("bubbleId:{}:{}", composer_id, bubble_id),
+                payload.to_string(),
+            ),
+        )
+        .unwrap();
+    }
+
+    fn setup_db(path: &Path) -> Connection {
+        let _ = fs::remove_file(path);
+        let conn = Connection::open(path).unwrap();
+        conn.execute("CREATE TABLE cursorDiskKV (key TEXT, value BLOB)", [])
+            .unwrap();
+        conn
     }
 
     #[test]
@@ -341,98 +438,193 @@ mod tests {
         );
     }
 
-    #[test]
-    fn parses_cursor_bubble_row() {
-        let mut model_names = HashMap::new();
-        model_names.insert("composer-1".to_string(), "gpt-4.1".to_string());
+    #[tokio::test]
+    async fn aggregates_tokens_across_bubbles_in_a_composer() {
+        let path = temp_file("aggregate.vscdb");
+        let conn = setup_db(&path);
 
-        let payload = serde_json::json!({
-            "tokenCount": {
-                "inputTokens": 1200,
-                "outputTokens": 300
-            },
-            "timingInfo": {
-                "clientEndTime": 1741448289691_i64
-            },
-            "usageUuid": "usage-1",
-            "serverBubbleId": "server-1",
-            "isAgentic": true,
-            "text": "A fairly long assistant response"
-        })
-        .to_string();
+        insert_composer(
+            &conn,
+            "comp-1",
+            serde_json::json!({
+                "modelConfig": { "modelName": "gpt-4.1" },
+                "createdAt": 1_776_400_200_000_i64,
+                "name": "My conversation"
+            }),
+        );
+        insert_bubble(
+            &conn,
+            "comp-1",
+            "b1",
+            serde_json::json!({
+                "type": 2,
+                "tokenCount": { "inputTokens": 1000, "outputTokens": 200 },
+                "timingInfo": { "clientEndTime": 1_776_400_260_000_i64 }
+            }),
+        );
+        insert_bubble(
+            &conn,
+            "comp-1",
+            "b2",
+            serde_json::json!({
+                "type": 2,
+                "tokenCount": { "inputTokens": 500, "outputTokens": 100 },
+                "timingInfo": { "clientEndTime": 1_776_400_300_000_i64 }
+            }),
+        );
+        drop(conn);
 
-        let record = parse_bubble_row(
-            "bubbleId:composer-1:bubble-1",
-            &payload,
-            "2026-04-16T12:00:00Z",
-            &model_names,
-        )
-        .unwrap()
-        .unwrap();
-
-        assert_eq!(record.provider, "cursor");
-        assert_eq!(record.model, "gpt-4.1");
-        assert_eq!(record.input_tokens, 1200);
-        assert_eq!(record.output_tokens, 300);
-        assert_eq!(record.session_id.as_deref(), Some("composer-1"));
-        assert!(record.recorded_at.starts_with("2025-03-"));
-        assert!(record
-            .metadata
-            .as_deref()
-            .unwrap_or("")
-            .contains("\"bubble_id\":\"bubble-1\""));
+        let records = CursorCollector::with_db_path(path.clone())
+            .collect()
+            .await
+            .unwrap();
+        assert_eq!(records.len(), 1);
+        let r = &records[0];
+        assert_eq!(r.provider, "cursor");
+        assert_eq!(r.model, "gpt-4.1");
+        assert_eq!(r.input_tokens, 1500);
+        assert_eq!(r.output_tokens, 300);
+        assert_eq!(r.session_id.as_deref(), Some("comp-1"));
+        let meta = r.metadata.as_deref().unwrap_or("");
+        assert!(meta.contains("\"bubble_count\":2"));
+        assert!(meta.contains("\"nonzero_token_bubble_count\":2"));
+        assert!(meta.contains("\"name\":\"My conversation\""));
+        let _ = fs::remove_file(path);
     }
 
     #[tokio::test]
-    async fn collector_reads_temp_copied_cursor_db() {
-        let db_path = temp_file("cursor-state.vscdb");
-        let _ = fs::remove_file(&db_path);
+    async fn emits_sentinel_record_when_all_bubbles_have_zero_tokens() {
+        let path = temp_file("sentinel.vscdb");
+        let conn = setup_db(&path);
 
-        let conn = Connection::open(&db_path).unwrap();
-        conn.execute("CREATE TABLE cursorDiskKV (key TEXT, value BLOB)", [])
-            .unwrap();
-        conn.execute(
-            "INSERT INTO cursorDiskKV (key, value) VALUES (?1, ?2)",
-            (
-                "composerData:composer-1",
+        insert_composer(
+            &conn,
+            "comp-z",
+            serde_json::json!({
+                "modelConfig": { "modelName": "default" },
+                "createdAt": 1_776_400_200_000_i64
+            }),
+        );
+        for i in 0..3 {
+            insert_bubble(
+                &conn,
+                "comp-z",
+                &format!("b{}", i),
                 serde_json::json!({
-                    "modelConfig": {
-                        "modelName": "gpt-4.1"
-                    }
-                })
-                .to_string(),
-            ),
-        )
-        .unwrap();
-        conn.execute(
-            "INSERT INTO cursorDiskKV (key, value) VALUES (?1, ?2)",
-            (
-                "bubbleId:composer-1:bubble-1",
-                serde_json::json!({
-                    "tokenCount": {
-                        "inputTokens": 42,
-                        "outputTokens": 9
-                    },
-                    "timingInfo": {
-                        "clientEndTime": 1741448289691_i64
-                    },
-                    "text": "hello"
-                })
-                .to_string(),
-            ),
-        )
-        .unwrap();
+                    "type": 2,
+                    "tokenCount": { "inputTokens": 0, "outputTokens": 0 }
+                }),
+            );
+        }
         drop(conn);
 
-        let collector = CursorCollector::with_db_path(db_path.clone());
-        let records = collector.collect().await.unwrap();
-
+        let records = CursorCollector::with_db_path(path.clone())
+            .collect()
+            .await
+            .unwrap();
         assert_eq!(records.len(), 1);
-        assert_eq!(records[0].provider, "cursor");
-        assert_eq!(records[0].model, "gpt-4.1");
-        assert_eq!(records[0].input_tokens, 42);
-        assert_eq!(records[0].output_tokens, 9);
+        let r = &records[0];
+        assert_eq!(r.model, "cursor-default");
+        assert_eq!(r.input_tokens, 0);
+        assert_eq!(r.output_tokens, 0);
+        assert_eq!(r.cost_usd, None);
+        let meta = r.metadata.as_deref().unwrap_or("");
+        assert!(meta.contains("\"bubble_count\":3"));
+        assert!(meta.contains("\"nonzero_token_bubble_count\":0"));
+        let _ = fs::remove_file(path);
+    }
 
-        let _ = fs::remove_file(db_path);
+    #[tokio::test]
+    async fn skips_composer_with_no_bubbles() {
+        let path = temp_file("empty-composer.vscdb");
+        let conn = setup_db(&path);
+
+        insert_composer(
+            &conn,
+            "empty-comp",
+            serde_json::json!({
+                "modelConfig": { "modelName": "gpt-4.1" },
+                "createdAt": 1_776_400_200_000_i64
+            }),
+        );
+        drop(conn);
+
+        let records = CursorCollector::with_db_path(path.clone())
+            .collect()
+            .await
+            .unwrap();
+        assert!(records.is_empty());
+        let _ = fs::remove_file(path);
+    }
+
+    #[tokio::test]
+    async fn handles_multiple_composers_mixed_tokens() {
+        let path = temp_file("mixed.vscdb");
+        let conn = setup_db(&path);
+
+        insert_composer(
+            &conn,
+            "comp-a",
+            serde_json::json!({
+                "modelConfig": { "modelName": "claude-sonnet-4-6" },
+                "createdAt": 1_776_400_100_000_i64
+            }),
+        );
+        insert_bubble(
+            &conn,
+            "comp-a",
+            "b1",
+            serde_json::json!({
+                "tokenCount": { "inputTokens": 2000, "outputTokens": 500 },
+                "timingInfo": { "clientEndTime": 1_776_400_150_000_i64 }
+            }),
+        );
+
+        insert_composer(
+            &conn,
+            "comp-b",
+            serde_json::json!({
+                "modelConfig": { "modelName": "default" },
+                "createdAt": 1_776_400_300_000_i64
+            }),
+        );
+        insert_bubble(
+            &conn,
+            "comp-b",
+            "b1",
+            serde_json::json!({
+                "tokenCount": { "inputTokens": 0, "outputTokens": 0 }
+            }),
+        );
+        drop(conn);
+
+        let records = CursorCollector::with_db_path(path.clone())
+            .collect()
+            .await
+            .unwrap();
+        assert_eq!(records.len(), 2);
+        // Sorted by recorded_at ascending → comp-a first.
+        assert_eq!(records[0].session_id.as_deref(), Some("comp-a"));
+        assert_eq!(records[0].model, "claude-sonnet-4-6");
+        assert_eq!(records[0].input_tokens, 2000);
+        assert_eq!(records[1].session_id.as_deref(), Some("comp-b"));
+        assert_eq!(records[1].model, "cursor-default");
+        assert_eq!(records[1].input_tokens, 0);
+        let _ = fs::remove_file(path);
+    }
+
+    #[tokio::test]
+    async fn returns_empty_when_no_cursor_disk_kv_table() {
+        let path = temp_file("no-table.vscdb");
+        let _ = fs::remove_file(&path);
+        let conn = Connection::open(&path).unwrap();
+        conn.execute("CREATE TABLE unrelated (k TEXT)", []).unwrap();
+        drop(conn);
+        let records = CursorCollector::with_db_path(path.clone())
+            .collect()
+            .await
+            .unwrap();
+        assert!(records.is_empty());
+        let _ = fs::remove_file(path);
     }
 }
