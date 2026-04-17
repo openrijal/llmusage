@@ -131,7 +131,11 @@ jobs:
           echo "Version verified: $CARGO_VERSION"
 
       - name: Publish to crates.io
-        run: cargo publish
+        # --allow-dirty lets publish tolerate the Cargo.lock diff that cargo's
+        # own verify build regenerates during `cargo package`. The lockfile
+        # committed to main is already fresh; without this flag publish fails
+        # with "files in the working directory contain changes".
+        run: cargo publish --allow-dirty
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
