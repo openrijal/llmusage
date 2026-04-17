@@ -4,7 +4,7 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-## [Unreleased]
+## [0.1.3] - 2026-04-17
 
 
 ### Added
@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Make release CHANGELOG auto-commit non-fatal (59525dc)
+- Cursor: aggregate per-composer and emit sentinel records (d98eac8)
+- Automate CHANGELOG.md and release notes with git-cliff (dcc8dac)
 - gemini fix specs (66fb0c7)
 - Allow manual trigger for Security Audit workflow (e016bcb)
 - Grant checks:write to Security Audit workflow (67550e0)
