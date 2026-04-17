@@ -109,10 +109,13 @@ impl Collector for CodexCollector {
             // Codex uses GPT-5 or similar via OpenAI
             let model = format!("codex-{}", model_provider);
 
-            // Second pass: collect token_count entries
-            // Use last_token_usage which gives per-turn deltas
-            let mut prev_input: i64 = 0;
-            let mut prev_output: i64 = 0;
+            // Second pass: collect token_count entries.
+            // Codex occasionally re-emits the exact same event line (e.g. on session
+            // end), so we dedupe on the full raw line. Distinct turns that happen to
+            // share identical token counts will still have different timestamps and
+            // therefore different serialized lines, so they survive.
+            let mut seen_lines: std::collections::HashSet<String> =
+                std::collections::HashSet::new();
 
             for line in content.lines() {
                 if !line.contains("token_count") {
@@ -135,20 +138,19 @@ impl Collector for CodexCollector {
                                 serde_json::from_value::<TokenInfo>(info.clone())
                             {
                                 if let Some(usage) = token_info.last_token_usage {
+                                    if !seen_lines.insert(line.to_string()) {
+                                        continue;
+                                    }
+
                                     // last_token_usage gives per-turn values
                                     let input = usage.input_tokens;
                                     let output =
                                         usage.output_tokens + usage.reasoning_output_tokens;
 
-                                    // Skip if same as previous (duplicate event)
-                                    if input == prev_input && output == prev_output {
+                                    if input == 0 && output == 0 && usage.cached_input_tokens == 0
+                                    {
                                         continue;
                                     }
-                                    if input == 0 && output == 0 {
-                                        continue;
-                                    }
-                                    prev_input = input;
-                                    prev_output = output;
 
                                     let cost = costs::calculate_cost(
                                         &model,

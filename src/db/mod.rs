@@ -64,7 +64,7 @@ impl Database {
         provider: Option<&str>,
         since: Option<&str>,
         until: Option<&str>,
-        limit: usize,
+        limit: Option<usize>,
     ) -> Result<Vec<crate::models::UsageRecord>> {
         queries::query_detail(&self.conn, model, provider, since, until, limit)
     }
