@@ -154,9 +154,11 @@ TOML config at `<config_dir>/llmusage/config.toml`, where `<config_dir>` resolve
 
 ## Distribution
 
-- `cargo install llmusage` from crates.io
+- `curl -LsSf https://raw.githubusercontent.com/openrijal/llmusage/main/install.sh | sh` — primary path; downloads a prebuilt binary, no Rust or C toolchain required
+- `brew install openrijal/tap/llmusage` — macOS Homebrew tap
+- `cargo install llmusage` from crates.io — builds from source; requires the Rust toolchain and a working C compiler because `rusqlite` bundles SQLite
 - Single static binary, no runtime dependencies (SQLite bundled)
-- Works on macOS and Linux
+- Works on macOS (Intel & Apple Silicon) and Linux (x86_64 glibc, x86_64 musl, aarch64)
 
 ## Non-Goals (v0.1)
 
