@@ -79,12 +79,10 @@ pub fn get_collectors(
     }
 
     if should_include("gemini_cli") {
-        let gemini_dir = dirs::home_dir()
-            .unwrap_or_default()
-            .join(".gemini")
-            .join("antigravity")
-            .join("conversations");
-        if gemini_dir.exists() {
+        let home = dirs::home_dir().unwrap_or_default();
+        let jsonl_dir = home.join(".gemini").join("tmp");
+        let legacy_dir = home.join(".gemini").join("antigravity").join("conversations");
+        if jsonl_dir.exists() || legacy_dir.exists() {
             collectors.push(Box::new(gemini_cli::GeminiCliCollector::new()));
         }
     }
