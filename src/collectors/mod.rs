@@ -17,6 +17,52 @@ use std::path::PathBuf;
 use crate::config::Config;
 use crate::models::UsageRecord;
 
+/// Known providers. The single source of truth for `--provider` flag values.
+///
+/// When adding a new collector in `get_collectors`, add the matching variant
+/// here — the compiler will not force this, but `explain_provider_filter`
+/// exhaustively matches on the canonical name string so behavior stays in sync.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
+#[value(rename_all = "snake_case")]
+pub enum Provider {
+    Anthropic,
+    Openai,
+    Gemini,
+    Openrouter,
+    Deepseek,
+    Ollama,
+    ClaudeCode,
+    Codex,
+    Opencode,
+    #[value(alias = "gemini-cli", alias = "antigravity")]
+    GeminiCli,
+    Cursor,
+    Windsurf,
+    #[value(alias = "vscode-copilot-chat")]
+    Vscode,
+}
+
+impl Provider {
+    /// Canonical snake_case name used internally and stored in the DB.
+    pub fn canonical_name(self) -> &'static str {
+        match self {
+            Provider::Anthropic => "anthropic",
+            Provider::Openai => "openai",
+            Provider::Gemini => "gemini",
+            Provider::Openrouter => "openrouter",
+            Provider::Deepseek => "deepseek",
+            Provider::Ollama => "ollama",
+            Provider::ClaudeCode => "claude_code",
+            Provider::Codex => "codex",
+            Provider::Opencode => "opencode",
+            Provider::GeminiCli => "gemini_cli",
+            Provider::Cursor => "cursor",
+            Provider::Windsurf => "windsurf",
+            Provider::Vscode => "vscode",
+        }
+    }
+}
+
 #[async_trait]
 pub trait Collector: Send + Sync {
     fn name(&self) -> &str;

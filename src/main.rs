@@ -8,6 +8,8 @@ mod models;
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 
+use crate::collectors::Provider;
+
 #[derive(Parser)]
 #[command(name = "llmusage")]
 #[command(about = "Track token usage and costs across AI providers")]
@@ -23,7 +25,7 @@ enum Commands {
     Sync {
         /// Specific provider to sync (default: all configured)
         #[arg(short, long)]
-        provider: Option<String>,
+        provider: Option<Provider>,
     },
     /// Show usage summary
     Summary {
@@ -32,7 +34,7 @@ enum Commands {
         days: u32,
         /// Filter by provider
         #[arg(short = 'P', long)]
-        provider: Option<String>,
+        provider: Option<Provider>,
         /// Filter by model
         #[arg(short, long)]
         model: Option<String>,
@@ -44,7 +46,7 @@ enum Commands {
         days: u32,
         /// Filter by provider
         #[arg(short = 'P', long)]
-        provider: Option<String>,
+        provider: Option<Provider>,
         /// Output as JSON
         #[arg(long)]
         json: bool,
@@ -59,7 +61,7 @@ enum Commands {
         weeks: u32,
         /// Filter by provider
         #[arg(short = 'P', long)]
-        provider: Option<String>,
+        provider: Option<Provider>,
         /// Output as JSON
         #[arg(long)]
         json: bool,
@@ -74,7 +76,7 @@ enum Commands {
         months: u32,
         /// Filter by provider
         #[arg(short = 'P', long)]
-        provider: Option<String>,
+        provider: Option<Provider>,
         /// Output as JSON
         #[arg(long)]
         json: bool,
@@ -89,7 +91,7 @@ enum Commands {
         model: Option<String>,
         /// Filter by provider
         #[arg(short = 'P', long)]
-        provider: Option<String>,
+        provider: Option<Provider>,
         /// Start date (YYYY-MM-DD)
         #[arg(short, long)]
         since: Option<String>,
@@ -104,7 +106,7 @@ enum Commands {
     Models {
         /// Filter by provider
         #[arg(short = 'P', long)]
-        provider: Option<String>,
+        provider: Option<Provider>,
     },
     /// Manage configuration
     Config {
@@ -156,7 +158,7 @@ async fn main() -> Result<()> {
 
     match cli.command {
         Commands::Sync { provider } => {
-            cmd_sync(&cfg, &db, canonical_provider_filter(provider.as_deref())).await?;
+            cmd_sync(&cfg, &db, provider.map(Provider::canonical_name)).await?;
         }
         Commands::Summary {
             days,
@@ -166,7 +168,7 @@ async fn main() -> Result<()> {
             cmd_summary(
                 &db,
                 days,
-                canonical_provider_filter(provider.as_deref()),
+                provider.map(Provider::canonical_name),
                 model.as_deref(),
             )?;
         }
@@ -176,13 +178,7 @@ async fn main() -> Result<()> {
             json,
             all,
         } => {
-            cmd_daily(
-                &db,
-                days,
-                canonical_provider_filter(provider.as_deref()),
-                json,
-                all,
-            )?;
+            cmd_daily(&db, days, provider.map(Provider::canonical_name), json, all)?;
         }
         Commands::Weekly {
             weeks,
@@ -193,7 +189,7 @@ async fn main() -> Result<()> {
             cmd_weekly(
                 &db,
                 weeks,
-                canonical_provider_filter(provider.as_deref()),
+                provider.map(Provider::canonical_name),
                 json,
                 all,
             )?;
@@ -207,7 +203,7 @@ async fn main() -> Result<()> {
             cmd_monthly(
                 &db,
                 months,
-                canonical_provider_filter(provider.as_deref()),
+                provider.map(Provider::canonical_name),
                 json,
                 all,
             )?;
@@ -222,14 +218,14 @@ async fn main() -> Result<()> {
             cmd_detail(
                 &db,
                 model.as_deref(),
-                canonical_provider_filter(provider.as_deref()),
+                provider.map(Provider::canonical_name),
                 since.as_deref(),
                 until.as_deref(),
                 limit,
             )?;
         }
         Commands::Models { provider } => {
-            cmd_models(canonical_provider_filter(provider.as_deref()))?;
+            cmd_models(provider.map(Provider::canonical_name))?;
         }
         Commands::UpdatePricing => {
             cmd_update_pricing().await?;
@@ -426,10 +422,6 @@ fn cmd_config(cfg: &config::Config, set: Option<&str>, _list: bool) -> Result<()
         }
     }
     Ok(())
-}
-
-fn canonical_provider_filter(provider: Option<&str>) -> Option<&str> {
-    provider.map(collectors::canonical_provider_name)
 }
 
 async fn cmd_update_pricing() -> Result<()> {
