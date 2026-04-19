@@ -78,13 +78,12 @@ impl Collector for OpenAICollector {
                 query.push(("page", p.clone()));
             }
 
-            let resp = self
+            let request = self
                 .client
                 .get("https://api.openai.com/v1/organization/usage/completions")
                 .bearer_auth(&self.api_key)
-                .query(&query)
-                .send()
-                .await?;
+                .query(&query);
+            let resp = super::http::send_with_retry(request).await?;
 
             if !resp.status().is_success() {
                 let status = resp.status();

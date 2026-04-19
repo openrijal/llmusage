@@ -92,14 +92,13 @@ impl Collector for AnthropicCollector {
                 query.push(("page", p.clone()));
             }
 
-            let resp = self
+            let request = self
                 .client
                 .get("https://api.anthropic.com/v1/organizations/usage_report/messages")
                 .header("x-api-key", &self.api_key)
                 .header("anthropic-version", "2024-10-22")
-                .query(&query)
-                .send()
-                .await?;
+                .query(&query);
+            let resp = super::http::send_with_retry(request).await?;
 
             if !resp.status().is_success() {
                 let status = resp.status();

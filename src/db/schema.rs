@@ -1,7 +1,7 @@
 use anyhow::{bail, Result};
 use rusqlite::Connection;
 
-const LATEST_SCHEMA_VERSION: i64 = 3;
+const LATEST_SCHEMA_VERSION: i64 = 4;
 
 const CREATE_USAGE_RECORDS_TABLE_SQL: &str = "
     CREATE TABLE IF NOT EXISTS usage_records (
@@ -33,7 +33,8 @@ const CREATE_INDEXES_SQL: &str = "
         cache_read_tokens,
         cache_write_tokens,
         recorded_at,
-        COALESCE(session_id, '')
+        COALESCE(session_id, ''),
+        COALESCE(cost_usd, -1)
     );
 ";
 
@@ -98,6 +99,7 @@ fn migrate(conn: &Connection, from: i64, to: i64) -> Result<()> {
         match version {
             1 => migrate_v1_to_v2(&tx)?,
             2 => migrate_v2_to_v3(&tx)?,
+            3 => migrate_v3_to_v4(&tx)?,
             _ => bail!("No migration path from schema version {}", version),
         }
         version += 1;
@@ -125,6 +127,27 @@ fn migrate_v2_to_v3(conn: &Connection) -> Result<()> {
            AND cache_read_tokens = 0
            AND cache_write_tokens = 0",
         [],
+    )?;
+    Ok(())
+}
+
+// Rebuild idx_dedup with cost_usd as a trailing column so that two legitimately
+// distinct API calls with identical token counts but different costs are no
+// longer dropped by INSERT OR IGNORE (issue #50).
+fn migrate_v3_to_v4(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        "DROP INDEX IF EXISTS idx_dedup;
+         CREATE UNIQUE INDEX idx_dedup ON usage_records(
+             provider,
+             model,
+             input_tokens,
+             output_tokens,
+             cache_read_tokens,
+             cache_write_tokens,
+             recorded_at,
+             COALESCE(session_id, ''),
+             COALESCE(cost_usd, -1)
+         );",
     )?;
     Ok(())
 }
@@ -284,6 +307,102 @@ mod tests {
         assert!(err.to_string().contains("usage_records"));
         assert_eq!(current_schema_version(&conn).unwrap(), 1);
         assert!(!index_exists(&conn, "idx_provider").unwrap());
+    }
+
+    #[test]
+    fn dedup_index_admits_records_differing_only_by_cost() {
+        let conn = Connection::open_in_memory().unwrap();
+        initialize(&conn).unwrap();
+
+        let insert = "INSERT OR IGNORE INTO usage_records (
+            provider, model, input_tokens, output_tokens,
+            cache_read_tokens, cache_write_tokens, cost_usd, session_id,
+            recorded_at, collected_at, metadata
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)";
+
+        let first = conn
+            .execute(
+                insert,
+                rusqlite::params![
+                    "anthropic",
+                    "claude-sonnet-4-6",
+                    100,
+                    50,
+                    0,
+                    0,
+                    0.10_f64,
+                    Option::<String>::None,
+                    "2026-04-18",
+                    "2026-04-18T12:00:00Z",
+                    Option::<String>::None,
+                ],
+            )
+            .unwrap();
+        assert_eq!(first, 1);
+
+        // Same token shape, different cost → should NOT be dropped.
+        let second = conn
+            .execute(
+                insert,
+                rusqlite::params![
+                    "anthropic",
+                    "claude-sonnet-4-6",
+                    100,
+                    50,
+                    0,
+                    0,
+                    0.20_f64,
+                    Option::<String>::None,
+                    "2026-04-18",
+                    "2026-04-18T12:00:00Z",
+                    Option::<String>::None,
+                ],
+            )
+            .unwrap();
+        assert_eq!(second, 1);
+
+        // Exact duplicate (same cost too) → dropped.
+        let third = conn
+            .execute(
+                insert,
+                rusqlite::params![
+                    "anthropic",
+                    "claude-sonnet-4-6",
+                    100,
+                    50,
+                    0,
+                    0,
+                    0.10_f64,
+                    Option::<String>::None,
+                    "2026-04-18",
+                    "2026-04-18T12:00:00Z",
+                    Option::<String>::None,
+                ],
+            )
+            .unwrap();
+        assert_eq!(third, 0);
+    }
+
+    #[test]
+    fn upgrades_v3_database_to_v4_with_cost_aware_dedup_index() {
+        let conn = Connection::open_in_memory().unwrap();
+        create_schema_v1(&conn).unwrap();
+        set_schema_version(&conn, 3).unwrap();
+
+        initialize(&conn).unwrap();
+
+        assert_eq!(current_schema_version(&conn).unwrap(), 4);
+        let sql: String = conn
+            .query_row(
+                "SELECT sql FROM sqlite_master WHERE type='index' AND name='idx_dedup'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(
+            sql.contains("cost_usd"),
+            "idx_dedup should include cost_usd after migration, got: {sql}"
+        );
     }
 
     #[test]
