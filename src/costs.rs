@@ -154,11 +154,22 @@ pub fn calculate_cost(
     // Try loading from LiteLLM cache
     if let Some(entries) = load_cached_pricing() {
         // Try exact match first, then prefix match
-        let entry = entries.get(model).or_else(|| {
-            // Try provider/model format (e.g., "anthropic/claude-sonnet-4-20250514")
-            let prefixed = format!("{}/{}", provider, model);
-            entries.get(&prefixed)
-        });
+        let prefixed = format!("{}/{}", provider, model);
+        let entry = entries
+            .get(model)
+            .or_else(|| entries.get(&prefixed))
+            .or_else(|| {
+                // OpenRouter models use upstream names like "anthropic/claude-3.5-sonnet".
+                // LiteLLM typically keys these as "openrouter/anthropic/claude-3.5-sonnet",
+                // but when that misses we also try the bare upstream model after the last '/'.
+                if provider == "openrouter" {
+                    model
+                        .rsplit_once('/')
+                        .and_then(|(_, bare)| entries.get(bare))
+                } else {
+                    None
+                }
+            });
 
         if let Some(entry) = entry {
             if let (Some(input_cpt), Some(output_cpt)) =
@@ -378,6 +389,8 @@ fn get_fallback_pricing(provider_filter: Option<&str>) -> Vec<ModelPricing> {
         mp("openai", "o3-mini", 1.10, 4.40, None, None),
         mp("gemini", "gemini-2.5-pro", 1.25, 10.0, None, None),
         mp("gemini", "gemini-2.5-flash", 0.15, 0.60, None, None),
+        mp("deepseek", "deepseek-chat", 0.27, 1.10, None, None),
+        mp("deepseek", "deepseek-reasoner", 0.55, 2.19, None, None),
         mp("ollama", "local-models", 0.0, 0.0, None, None),
     ];
 
@@ -478,5 +491,32 @@ mod fallback_tests {
     fn openai_no_cache_rates_ignore_cache_tokens() {
         let cost = calculate_cost_fallback("gpt-4o", "openai", 0, 0, 1_000_000, 1_000_000).unwrap();
         assert_eq!(cost, 0.0);
+    }
+
+    #[test]
+    fn deepseek_fallback_pricing_included() {
+        let models = get_fallback_pricing(Some("deepseek"));
+        let names: Vec<&str> = models.iter().map(|m| m.model.as_str()).collect();
+        assert!(names.contains(&"deepseek-chat"));
+        assert!(names.contains(&"deepseek-reasoner"));
+    }
+
+    #[test]
+    fn deepseek_reasoner_fallback_cost() {
+        let cost =
+            calculate_cost_fallback("deepseek-reasoner", "deepseek", 1_000_000, 1_000_000, 0, 0)
+                .unwrap();
+        // 0.55 input + 2.19 output per MTok
+        assert!((cost - 2.74).abs() < 1e-9, "got {cost}");
+    }
+
+    #[test]
+    fn openrouter_normalizes_to_openrouter() {
+        assert_eq!(normalize_provider("openrouter"), Some("openrouter"));
+    }
+
+    #[test]
+    fn deepseek_normalizes_to_deepseek() {
+        assert_eq!(normalize_provider("deepseek"), Some("deepseek"));
     }
 }
