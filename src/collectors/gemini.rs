@@ -1,6 +1,5 @@
 use anyhow::Result;
 use async_trait::async_trait;
-use chrono::Utc;
 
 use super::Collector;
 use crate::models::UsageRecord;
@@ -23,20 +22,18 @@ impl Collector for GeminiCollector {
     }
 
     async fn collect(&self) -> Result<Vec<UsageRecord>> {
-        // Gemini usage tracking is not straightforward programmatically.
-        // Google AI Studio doesn't expose a clean usage API like Anthropic/OpenAI.
-        // Options:
-        //   1. Cloud Billing API (requires GCP project + billing export)
-        //   2. AI Studio dashboard scraping (fragile)
-        //   3. Track usage locally by intercepting API calls
+        // As of 2026-04, Google AI Studio still exposes no first-party usage or
+        // billing API for Gemini keys. The only programmatic route is the
+        // Vertex AI billing export (requires a GCP project with billing export
+        // configured), which is out of scope for this collector and warrants a
+        // separate `vertex_ai` collector if pursued.
         //
-        // For now, this is a stub that returns empty.
-        // Future: implement Cloud Billing API integration or local proxy tracking.
-        let _ = Utc::now();
-        anyhow::bail!(
-            "Gemini collector not yet implemented. \
-             Google AI Studio lacks a clean usage API. \
-             Consider tracking via Cloud Billing export."
-        )
+        // Returning an empty record set keeps `llmusage sync` quiet for users
+        // who have a Gemini key configured but no way to pull usage yet.
+        eprintln!(
+            "warning: gemini usage sync is a no-op — Google AI Studio has no usage API. \
+             Track via Vertex AI billing export if you need Gemini numbers."
+        );
+        Ok(vec![])
     }
 }
