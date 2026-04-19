@@ -152,7 +152,7 @@ impl Collector for OpenCodeCollector {
                     collected_at: collected_at.clone(),
                     metadata: msg
                         .provider_id
-                        .map(|p| format!("{{\"provider\": \"{}\"}}", p)),
+                        .map(|p| serde_json::json!({ "provider": p }).to_string()),
                 });
             }
         }

@@ -1,7 +1,7 @@
 use anyhow::{bail, Result};
 use rusqlite::Connection;
 
-const LATEST_SCHEMA_VERSION: i64 = 2;
+const LATEST_SCHEMA_VERSION: i64 = 3;
 
 const CREATE_USAGE_RECORDS_TABLE_SQL: &str = "
     CREATE TABLE IF NOT EXISTS usage_records (
@@ -97,6 +97,7 @@ fn migrate(conn: &Connection, from: i64, to: i64) -> Result<()> {
     while version < to {
         match version {
             1 => migrate_v1_to_v2(&tx)?,
+            2 => migrate_v2_to_v3(&tx)?,
             _ => bail!("No migration path from schema version {}", version),
         }
         version += 1;
@@ -109,6 +110,22 @@ fn migrate(conn: &Connection, from: i64, to: i64) -> Result<()> {
 
 fn migrate_v1_to_v2(conn: &Connection) -> Result<()> {
     conn.execute_batch(CREATE_INDEXES_SQL)?;
+    Ok(())
+}
+
+// Drop legacy 0-token Ollama heartbeat rows (issues #17/#27). Other providers
+// (e.g. cursor) emit intentional zero-token sentinel records, so the cleanup
+// is scoped to provider = 'ollama'.
+fn migrate_v2_to_v3(conn: &Connection) -> Result<()> {
+    conn.execute(
+        "DELETE FROM usage_records
+         WHERE provider = 'ollama'
+           AND input_tokens = 0
+           AND output_tokens = 0
+           AND cache_read_tokens = 0
+           AND cache_write_tokens = 0",
+        [],
+    )?;
     Ok(())
 }
 
