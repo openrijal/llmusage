@@ -90,6 +90,10 @@ llmusage --version
 # Configure an API provider (optional — local tools are auto-detected)
 llmusage config --set anthropic_api_key=sk-ant-...
 
+# Or prefer environment variables for secrets
+export ANTHROPIC_API_KEY=sk-ant-...
+export OPENAI_API_KEY=sk-...
+
 # Sync usage data from all configured/detected providers
 llmusage sync
 
@@ -176,6 +180,17 @@ llmusage config --set claude_code_enabled=false
 
 `llmusage config --list` also shows auto-detected local collectors and strict-mode unsupported local IDE tooling such as Windsurf and VS Code.
 
+Environment variables override config file values when present:
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
+export OPENAI_API_KEY=sk-...
+export GEMINI_API_KEY=AIza...
+export OLLAMA_HOST=http://192.168.1.10:11434
+```
+
+This is the preferred way to provide API keys because secrets do not need to be written to disk.
+
 For local SQLite IDE collectors that live under a platform config directory:
 
 - **macOS**: `<config_dir>` resolves to `~/Library/Application Support`
@@ -206,6 +221,8 @@ TOML config at platform-specific location:
 | `gemini_api_key` | Gemini API key | None |
 | `ollama_host` | Ollama server URL | `http://localhost:11434` |
 | `claude_code_enabled` | Parse Claude Code session logs | `true` |
+
+On Unix, `llmusage` restricts `config.toml` permissions to `0600` when it reads or writes the file. Existing API key fields still work, but environment variables are safer for secrets.
 
 ## Uninstall
 
