@@ -519,4 +519,21 @@ mod fallback_tests {
     fn deepseek_normalizes_to_deepseek() {
         assert_eq!(normalize_provider("deepseek"), Some("deepseek"));
     }
+
+    #[test]
+    fn normalize_provider_covers_known_aliases() {
+        assert_eq!(normalize_provider("anthropic"), Some("anthropic"));
+        assert_eq!(normalize_provider("openai"), Some("openai"));
+        assert_eq!(normalize_provider("vertex_ai"), Some("gemini"));
+        assert_eq!(normalize_provider("vertex_ai_beta"), Some("gemini"));
+        assert_eq!(normalize_provider("ollama_chat"), Some("ollama"));
+        assert_eq!(normalize_provider("azure_ai"), Some("azure"));
+        assert_eq!(normalize_provider("cohere_chat"), Some("cohere"));
+    }
+
+    #[test]
+    fn normalize_provider_rejects_unknown() {
+        assert_eq!(normalize_provider("unknown-thing"), None);
+        assert_eq!(normalize_provider(""), None);
+    }
 }

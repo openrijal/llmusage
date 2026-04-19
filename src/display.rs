@@ -744,4 +744,41 @@ mod format_tests {
     fn i64_min_does_not_panic() {
         let _ = format_tokens_comma(i64::MIN);
     }
+
+    use super::{format_cost, shorten_model, strip_date_suffix};
+
+    #[test]
+    fn format_cost_picks_precision_by_magnitude() {
+        assert_eq!(format_cost(0.0), "$0.00");
+        assert_eq!(format_cost(0.0001), "$0.0001");
+        assert_eq!(format_cost(0.015), "$0.015");
+        assert_eq!(format_cost(1.2345), "$1.23");
+        assert_eq!(format_cost(123.456), "$123.46");
+    }
+
+    #[test]
+    fn shorten_model_strips_known_prefixes_and_dates() {
+        assert_eq!(shorten_model("claude-opus-4-6-20260205"), "opus-4-6");
+        assert_eq!(shorten_model("claude-sonnet-4-20250514"), "sonnet-4");
+        assert_eq!(shorten_model("claude-haiku-4-5-20251001"), "haiku-4-5");
+        assert_eq!(
+            shorten_model("antigravity-gemini-3-flash"),
+            "gemini-3-flash"
+        );
+        assert_eq!(
+            shorten_model("antigravity-claude-opus-4-5-thinking"),
+            "opus-4-5-thinking"
+        );
+        // Unrelated names should pass through unchanged.
+        assert_eq!(shorten_model("gpt-4o-mini"), "gpt-4o-mini");
+    }
+
+    #[test]
+    fn strip_date_suffix_removes_only_trailing_dash_date() {
+        assert_eq!(strip_date_suffix("sonnet-4-20250514"), "sonnet-4");
+        assert_eq!(strip_date_suffix("gpt-4o-mini"), "gpt-4o-mini");
+        assert_eq!(strip_date_suffix("short"), "short");
+        // Looks date-like but missing dash prefix.
+        assert_eq!(strip_date_suffix("v20250514"), "v20250514");
+    }
 }

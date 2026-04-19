@@ -5,6 +5,7 @@ pub mod cursor;
 pub mod deepseek;
 pub mod gemini;
 pub mod gemini_cli;
+pub mod http;
 pub mod ollama;
 pub mod openai;
 pub mod opencode;
@@ -400,4 +401,82 @@ fn vscode_state_db_path() -> PathBuf {
         .join("User")
         .join("globalStorage")
         .join("state.vscdb")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn empty_config() -> Config {
+        Config {
+            db_path: "db.sqlite".into(),
+            anthropic_api_key: None,
+            openai_api_key: None,
+            gemini_api_key: None,
+            openrouter_api_key: None,
+            deepseek_api_key: None,
+            ollama_host: None,
+            ollama_enabled: false,
+            claude_code_enabled: false,
+            config_path: PathBuf::from("config.toml"),
+        }
+    }
+
+    #[test]
+    fn explain_provider_filter_mentions_named_provider() {
+        let cfg = empty_config();
+        for name in [
+            "anthropic",
+            "openai",
+            "gemini",
+            "openrouter",
+            "deepseek",
+            "ollama",
+            "claude_code",
+            "codex",
+            "opencode",
+            "gemini_cli",
+            "cursor",
+            "windsurf",
+            "vscode",
+        ] {
+            let msg = explain_provider_filter(&cfg, name);
+            assert!(
+                msg.contains(name) || msg.contains("strict mode"),
+                "message for {name} should reference it: {msg:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn explain_provider_filter_handles_aliases() {
+        let cfg = empty_config();
+        let msg = explain_provider_filter(&cfg, "antigravity");
+        assert!(
+            msg.to_lowercase().contains("gemini") || msg.contains("Antigravity"),
+            "antigravity alias should resolve to gemini_cli guidance, got: {msg:?}"
+        );
+    }
+
+    #[test]
+    fn explain_provider_filter_reports_unknown_names() {
+        let cfg = empty_config();
+        let msg = explain_provider_filter(&cfg, "antropic");
+        assert!(msg.contains("Unknown provider"), "got: {msg:?}");
+        assert!(msg.contains("antropic"), "got: {msg:?}");
+    }
+
+    #[test]
+    fn explain_provider_filter_distinguishes_configured_vs_missing() {
+        let mut cfg = empty_config();
+        let missing = explain_provider_filter(&cfg, "openai");
+        assert!(
+            missing.contains("requires `openai_api_key`"),
+            "got: {missing:?}"
+        );
+
+        cfg.openai_api_key = Some("sk-test".into());
+        let configured = explain_provider_filter(&cfg, "openai");
+        assert!(configured.contains("configured"), "got: {configured:?}");
+    }
 }

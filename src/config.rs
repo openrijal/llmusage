@@ -352,6 +352,51 @@ mod tests {
         let _ = std::fs::remove_file(path);
     }
 
+    fn cfg_with_path(path: PathBuf) -> Config {
+        Config {
+            db_path: "db.sqlite".to_string(),
+            anthropic_api_key: None,
+            openai_api_key: None,
+            gemini_api_key: None,
+            openrouter_api_key: None,
+            deepseek_api_key: None,
+            ollama_host: None,
+            ollama_enabled: false,
+            claude_code_enabled: true,
+            config_path: path,
+        }
+    }
+
+    #[test]
+    fn set_config_value_rejects_unknown_key() {
+        let path = temp_path("set-unknown");
+        let cfg = cfg_with_path(path.clone());
+        let err = set_config_value(&cfg, "does_not_exist", "x").unwrap_err();
+        assert!(err.to_string().contains("Unknown config key"));
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn set_config_value_reports_parse_errors_for_typed_keys() {
+        let path = temp_path("set-parse");
+        let cfg = cfg_with_path(path.clone());
+        let err = set_config_value(&cfg, "ollama_enabled", "not-a-bool").unwrap_err();
+        // anyhow wraps the ParseBoolError.
+        assert!(err.to_string().to_lowercase().contains("bool") || !err.to_string().is_empty());
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn set_config_value_persists_string_keys() {
+        let path = temp_path("set-string");
+        let cfg = cfg_with_path(path.clone());
+        set_config_value(&cfg, "anthropic_api_key", "sk-test").unwrap();
+
+        let reloaded: Config = toml::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(reloaded.anthropic_api_key.as_deref(), Some("sk-test"));
+        let _ = std::fs::remove_file(path);
+    }
+
     #[test]
     #[cfg(unix)]
     fn load_config_tightens_existing_file_permissions() {
