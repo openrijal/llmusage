@@ -87,6 +87,7 @@ impl Collector for CodexCollector {
             // Extract session ID and model from session_meta
             let mut session_id = None;
             let mut model_provider = String::from("openai");
+            let mut model_name: Option<String> = None;
 
             // First pass: get session metadata
             for line in content.lines() {
@@ -100,14 +101,28 @@ impl Collector for CodexCollector {
                             {
                                 model_provider = mp.to_string();
                             }
+                            // Codex records the actual model (e.g. "gpt-5",
+                            // "o3", "gpt-4.1") on session_meta. Prefer it so
+                            // costs match LiteLLM pricing and per-model
+                            // breakdowns are meaningful (issue #35).
+                            if let Some(m) = payload
+                                .get("model")
+                                .and_then(|v| v.as_str())
+                                .or_else(|| payload.get("model_id").and_then(|v| v.as_str()))
+                            {
+                                if !m.is_empty() {
+                                    model_name = Some(m.to_string());
+                                }
+                            }
                         }
                     }
                     break;
                 }
             }
 
-            // Codex uses GPT-5 or similar via OpenAI
-            let model = format!("codex-{}", model_provider);
+            // Fall back to the legacy `codex-{provider}` shape only when the
+            // session log doesn't name a model.
+            let model = model_name.unwrap_or_else(|| format!("codex-{}", model_provider));
 
             // Second pass: collect token_count entries.
             // Codex occasionally re-emits the exact same event line (e.g. on session
