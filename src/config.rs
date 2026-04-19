@@ -13,6 +13,10 @@ pub struct Config {
     #[serde(default)]
     pub gemini_api_key: Option<String>,
     #[serde(default)]
+    pub openrouter_api_key: Option<String>,
+    #[serde(default)]
+    pub deepseek_api_key: Option<String>,
+    #[serde(default)]
     pub ollama_host: Option<String>,
     #[serde(default = "default_true")]
     pub claude_code_enabled: bool,
@@ -54,6 +58,8 @@ pub fn load_config() -> Result<Config> {
             anthropic_api_key: None,
             openai_api_key: None,
             gemini_api_key: None,
+            openrouter_api_key: None,
+            deepseek_api_key: None,
             ollama_host: None,
             claude_code_enabled: true,
             config_path: path.clone(),
@@ -87,6 +93,8 @@ pub fn set_config_value(cfg: &Config, key: &str, value: &str) -> Result<()> {
         "anthropic_api_key" => cfg.anthropic_api_key = Some(value.to_string()),
         "openai_api_key" => cfg.openai_api_key = Some(value.to_string()),
         "gemini_api_key" => cfg.gemini_api_key = Some(value.to_string()),
+        "openrouter_api_key" => cfg.openrouter_api_key = Some(value.to_string()),
+        "deepseek_api_key" => cfg.deepseek_api_key = Some(value.to_string()),
         "ollama_host" => cfg.ollama_host = Some(value.to_string()),
         "claude_code_enabled" => cfg.claude_code_enabled = value.parse()?,
         "db_path" => cfg.db_path = value.to_string(),
@@ -129,6 +137,22 @@ pub fn print_config(cfg: &Config) {
         if env_var_present("GEMINI_API_KEY") {
             "configured (env)".green()
         } else if cfg.gemini_api_key.is_some() {
+            "configured".green()
+        } else {
+            "not set".dimmed()
+        }
+    );
+    println!(
+        "  openrouter:   {}",
+        if cfg.openrouter_api_key.is_some() {
+            "configured".green()
+        } else {
+            "not set".dimmed()
+        }
+    );
+    println!(
+        "  deepseek:     {}",
+        if cfg.deepseek_api_key.is_some() {
             "configured".green()
         } else {
             "not set".dimmed()

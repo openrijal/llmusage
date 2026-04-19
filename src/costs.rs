@@ -83,6 +83,7 @@ fn normalize_provider(litellm_provider: &str) -> Option<&'static str> {
         "bedrock" => Some("bedrock"),
         "azure" | "azure_ai" => Some("azure"),
         "deepseek" => Some("deepseek"),
+        "openrouter" => Some("openrouter"),
         "groq" => Some("groq"),
         "together_ai" => Some("together"),
         "fireworks_ai" => Some("fireworks"),
@@ -264,6 +265,14 @@ fn fallback_rates(model: &str) -> Option<FallbackRates> {
     }
     if has_reasoning_token(model, "o1") {
         return Some(rates_no_cache(15.0, 60.0));
+    }
+
+    // DeepSeek — public pricing as of 2025-02. LiteLLM cache overrides when present.
+    if model.contains("deepseek-reasoner") {
+        return Some(rates_no_cache(0.55, 2.19));
+    }
+    if model.contains("deepseek-chat") {
+        return Some(rates_no_cache(0.27, 1.10));
     }
 
     // Gemini family.
