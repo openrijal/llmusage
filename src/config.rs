@@ -236,7 +236,18 @@ fn tighten_config_permissions(_path: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Mutex, MutexGuard, OnceLock};
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    // Tests that mutate process-wide environment variables must not run in
+    // parallel — cargo test runs tests in multiple threads by default, and
+    // overlapping set_var calls produce nondeterministic results.
+    fn env_lock() -> MutexGuard<'static, ()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
 
     struct EnvGuard {
         key: &'static str,
@@ -277,6 +288,7 @@ mod tests {
 
     #[test]
     fn env_overrides_file_values() {
+        let _guard = env_lock();
         let _anthropic = EnvGuard::set("ANTHROPIC_API_KEY", "env-anthropic");
         let _openai = EnvGuard::set("OPENAI_API_KEY", "env-openai");
         let _gemini = EnvGuard::set("GEMINI_API_KEY", "env-gemini");
@@ -305,6 +317,7 @@ mod tests {
 
     #[test]
     fn empty_env_vars_do_not_override_file_values() {
+        let _guard = env_lock();
         let _openai = EnvGuard::set("OPENAI_API_KEY", "");
 
         let mut cfg = Config {

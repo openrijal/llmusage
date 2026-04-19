@@ -34,6 +34,12 @@ jobs:
           - target: aarch64-apple-darwin
             os: macos-latest
             use_cross: false
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            use_cross: false
+          - target: aarch64-pc-windows-msvc
+            os: windows-latest
+            use_cross: false
     steps:
       - uses: actions/checkout@v4
 
@@ -69,7 +75,9 @@ jobs:
         if: contains(matrix.target, 'apple')
         run: strip target/${{ matrix.target }}/release/${{ env.BINARY_NAME }}
 
-      - name: Create tarball
+      - name: Create tarball (Unix)
+        if: "!contains(matrix.target, 'windows')"
+        shell: bash
         run: |
           TAG="${GITHUB_REF_NAME}"
           ARCHIVE="${BINARY_NAME}-${TAG}-${{ matrix.target }}.tar.gz"
@@ -80,6 +88,18 @@ jobs:
           tar czf "../${ARCHIVE}" *
           cd ..
           echo "ARCHIVE=${ARCHIVE}" >> "$GITHUB_ENV"
+
+      - name: Create zip (Windows)
+        if: contains(matrix.target, 'windows')
+        shell: pwsh
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          $archive = "$env:BINARY_NAME-$tag-${{ matrix.target }}.zip"
+          New-Item -ItemType Directory -Force -Path staging | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/$env:BINARY_NAME.exe" staging/
+          Copy-Item LICENSE, README.md staging/
+          Compress-Archive -Path staging/* -DestinationPath $archive
+          "ARCHIVE=$archive" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -110,7 +130,7 @@ jobs:
       - name: Generate checksums
         run: |
           cd artifacts
-          sha256sum *.tar.gz > sha256sums.txt
+          sha256sum *.tar.gz *.zip > sha256sums.txt
 
       - name: Generate release notes with git-cliff
         uses: orhun/git-cliff-action@v4
@@ -154,6 +174,7 @@ jobs:
           body_path: RELEASE_NOTES.md
           files: |
             artifacts/*.tar.gz
+            artifacts/*.zip
             artifacts/sha256sums.txt
 
   publish:
