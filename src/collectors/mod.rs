@@ -2,11 +2,13 @@ pub mod anthropic;
 pub mod claude_code;
 pub mod codex;
 pub mod cursor;
+pub mod deepseek;
 pub mod gemini;
 pub mod gemini_cli;
 pub mod ollama;
 pub mod openai;
 pub mod opencode;
+pub mod openrouter;
 
 use anyhow::Result;
 use async_trait::async_trait;
@@ -60,6 +62,18 @@ pub fn get_collectors(
     if should_include("gemini") {
         if let Some(ref key) = cfg.gemini_api_key {
             collectors.push(Box::new(gemini::GeminiCollector::new(key.clone())));
+        }
+    }
+
+    if should_include("openrouter") {
+        if let Some(ref key) = cfg.openrouter_api_key {
+            collectors.push(Box::new(openrouter::OpenRouterCollector::new(key.clone())));
+        }
+    }
+
+    if should_include("deepseek") {
+        if let Some(ref key) = cfg.deepseek_api_key {
+            collectors.push(Box::new(deepseek::DeepSeekCollector::new(key.clone())));
         }
     }
 
@@ -223,6 +237,23 @@ pub fn explain_provider_filter(cfg: &Config, provider_filter: &str) -> String {
                     .to_string()
             }
         }
+        "openrouter" => {
+            if cfg.openrouter_api_key.is_some() {
+                "Provider 'openrouter' is configured but returned no active collector.".to_string()
+            } else {
+                "Provider 'openrouter' is supported but requires `openrouter_api_key` in config."
+                    .to_string()
+            }
+        }
+        "deepseek" => {
+            if cfg.deepseek_api_key.is_some() {
+                "Provider 'deepseek' is configured, but DeepSeek does not expose a historical usage API; the collector only validates the key."
+                    .to_string()
+            } else {
+                "Provider 'deepseek' is supported but requires `deepseek_api_key` in config."
+                    .to_string()
+            }
+        }
         "ollama" => "Provider 'ollama' is supported, but no collector could be activated.".to_string(),
         "claude_code" => {
             if cfg.claude_code_enabled {
@@ -266,7 +297,7 @@ pub fn explain_provider_filter(cfg: &Config, provider_filter: &str) -> String {
                 .to_string()
         }
         other => format!(
-            "Unknown provider '{}'. Known providers: anthropic, openai, gemini, ollama, claude_code, codex, opencode, gemini_cli, antigravity, cursor, windsurf, vscode",
+            "Unknown provider '{}'. Known providers: anthropic, openai, gemini, openrouter, deepseek, ollama, claude_code, codex, opencode, gemini_cli, antigravity, cursor, windsurf, vscode",
             other
         ),
     }
