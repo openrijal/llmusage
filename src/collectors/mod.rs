@@ -123,7 +123,7 @@ pub fn get_collectors(
         }
     }
 
-    if should_include("ollama") {
+    if should_include("ollama") && cfg.ollama_enabled {
         let host = cfg
             .ollama_host
             .clone()
@@ -300,7 +300,14 @@ pub fn explain_provider_filter(cfg: &Config, provider_filter: &str) -> String {
                     .to_string()
             }
         }
-        "ollama" => "Provider 'ollama' is supported, but no collector could be activated.".to_string(),
+        "ollama" => {
+            if cfg.ollama_enabled {
+                "Provider 'ollama' is enabled, but no collector could be activated.".to_string()
+            } else {
+                "Provider 'ollama' is disabled. Run `llmusage config --set ollama_enabled=true` to include it in sync."
+                    .to_string()
+            }
+        }
         "claude_code" => {
             if cfg.claude_code_enabled {
                 "Provider 'claude_code' is enabled, but no local session logs were found."

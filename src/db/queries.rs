@@ -151,12 +151,22 @@ pub fn query_detail(
     Ok(results)
 }
 
-pub fn query_daily(conn: &Connection, days: u32, provider: Option<&str>) -> Result<Vec<DailyRow>> {
+pub fn query_daily(
+    conn: &Connection,
+    days: u32,
+    provider: Option<&str>,
+    model: Option<&str>,
+    since: Option<&str>,
+    until: Option<&str>,
+) -> Result<Vec<DailyRow>> {
     query_grouped(
         conn,
         "DATE(recorded_at)",
         &format!("-{} days", days),
         provider,
+        model,
+        since,
+        until,
     )
 }
 
@@ -164,6 +174,9 @@ pub fn query_weekly(
     conn: &Connection,
     weeks: u32,
     provider: Option<&str>,
+    model: Option<&str>,
+    since: Option<&str>,
+    until: Option<&str>,
 ) -> Result<Vec<DailyRow>> {
     // SQLite's `%V`/`%G` strftime modifiers were added in SQLite 3.46 (May 2024).
     // The bundled build in `rusqlite = 0.31` ships SQLite 3.45, where those
@@ -175,6 +188,9 @@ pub fn query_weekly(
         "DATE(recorded_at)",
         &format!("-{} days", weeks * 7),
         provider,
+        model,
+        since,
+        until,
     )?;
     Ok(rebucket_daily_by_iso_week(daily))
 }
@@ -236,12 +252,18 @@ pub fn query_monthly(
     conn: &Connection,
     months: u32,
     provider: Option<&str>,
+    model: Option<&str>,
+    since: Option<&str>,
+    until: Option<&str>,
 ) -> Result<Vec<DailyRow>> {
     query_grouped(
         conn,
         "strftime('%Y-%m', recorded_at)",
         &format!("-{} months", months),
         provider,
+        model,
+        since,
+        until,
     )
 }
 
@@ -250,6 +272,9 @@ fn query_grouped(
     group_expr: &str,
     lookback: &str,
     provider: Option<&str>,
+    model: Option<&str>,
+    since: Option<&str>,
+    until: Option<&str>,
 ) -> Result<Vec<DailyRow>> {
     let mut sql = format!(
         "SELECT {group_expr} as period, provider, model,
@@ -257,15 +282,43 @@ fn query_grouped(
          SUM(output_tokens) as total_output,
          COALESCE(SUM(cost_usd), 0) as total_cost
          FROM usage_records
-         WHERE recorded_at >= datetime('now', ?1)"
+         WHERE 1=1"
     );
 
-    let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> =
-        vec![Box::new(lookback.to_string())];
+    let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+
+    // Explicit --since overrides the rolling lookback; otherwise apply the
+    // lookback window computed from --days/--weeks/--months.
+    if let Some(s) = since {
+        sql.push_str(&format!(" AND recorded_at >= ?{}", param_values.len() + 1));
+        param_values.push(Box::new(s.to_string()));
+    } else {
+        sql.push_str(&format!(
+            " AND recorded_at >= datetime('now', ?{})",
+            param_values.len() + 1
+        ));
+        param_values.push(Box::new(lookback.to_string()));
+    }
+
+    if let Some(u) = until {
+        sql.push_str(&format!(" AND recorded_at <= ?{}", param_values.len() + 1));
+        let until_val =
+            if u.len() == 10 && u.chars().nth(4) == Some('-') && u.chars().nth(7) == Some('-') {
+                format!("{}T23:59:59", u)
+            } else {
+                u.to_string()
+            };
+        param_values.push(Box::new(until_val));
+    }
 
     if let Some(p) = provider {
         sql.push_str(&format!(" AND provider = ?{}", param_values.len() + 1));
         param_values.push(Box::new(p.to_string()));
+    }
+
+    if let Some(m) = model {
+        sql.push_str(&format!(" AND model LIKE ?{}", param_values.len() + 1));
+        param_values.push(Box::new(format!("%{}%", m)));
     }
 
     sql.push_str(

@@ -47,6 +47,15 @@ enum Commands {
         /// Filter by provider
         #[arg(short = 'P', long)]
         provider: Option<Provider>,
+        /// Filter by model (substring match)
+        #[arg(short, long)]
+        model: Option<String>,
+        /// Start date (YYYY-MM-DD) — overrides --days
+        #[arg(long)]
+        since: Option<String>,
+        /// End date (YYYY-MM-DD)
+        #[arg(long)]
+        until: Option<String>,
         /// Output as JSON
         #[arg(long)]
         json: bool,
@@ -62,6 +71,15 @@ enum Commands {
         /// Filter by provider
         #[arg(short = 'P', long)]
         provider: Option<Provider>,
+        /// Filter by model (substring match)
+        #[arg(short, long)]
+        model: Option<String>,
+        /// Start date (YYYY-MM-DD) — overrides --weeks
+        #[arg(long)]
+        since: Option<String>,
+        /// End date (YYYY-MM-DD)
+        #[arg(long)]
+        until: Option<String>,
         /// Output as JSON
         #[arg(long)]
         json: bool,
@@ -77,6 +95,15 @@ enum Commands {
         /// Filter by provider
         #[arg(short = 'P', long)]
         provider: Option<Provider>,
+        /// Filter by model (substring match)
+        #[arg(short, long)]
+        model: Option<String>,
+        /// Start date (YYYY-MM-DD) — overrides --months
+        #[arg(long)]
+        since: Option<String>,
+        /// End date (YYYY-MM-DD)
+        #[arg(long)]
+        until: Option<String>,
         /// Output as JSON
         #[arg(long)]
         json: bool,
@@ -175,14 +202,29 @@ async fn main() -> Result<()> {
         Commands::Daily {
             days,
             provider,
+            model,
+            since,
+            until,
             json,
             all,
         } => {
-            cmd_daily(&db, days, provider.map(Provider::canonical_name), json, all)?;
+            cmd_daily(
+                &db,
+                days,
+                provider.map(Provider::canonical_name),
+                model.as_deref(),
+                since.as_deref(),
+                until.as_deref(),
+                json,
+                all,
+            )?;
         }
         Commands::Weekly {
             weeks,
             provider,
+            model,
+            since,
+            until,
             json,
             all,
         } => {
@@ -190,6 +232,9 @@ async fn main() -> Result<()> {
                 &db,
                 weeks,
                 provider.map(Provider::canonical_name),
+                model.as_deref(),
+                since.as_deref(),
+                until.as_deref(),
                 json,
                 all,
             )?;
@@ -197,6 +242,9 @@ async fn main() -> Result<()> {
         Commands::Monthly {
             months,
             provider,
+            model,
+            since,
+            until,
             json,
             all,
         } => {
@@ -204,6 +252,9 @@ async fn main() -> Result<()> {
                 &db,
                 months,
                 provider.map(Provider::canonical_name),
+                model.as_deref(),
+                since.as_deref(),
+                until.as_deref(),
                 json,
                 all,
             )?;
@@ -314,14 +365,18 @@ fn cmd_summary(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn cmd_daily(
     db: &db::Database,
     days: u32,
     provider: Option<&str>,
+    model: Option<&str>,
+    since: Option<&str>,
+    until: Option<&str>,
     json: bool,
     show_all: bool,
 ) -> Result<()> {
-    let rows = db.query_daily(days, provider)?;
+    let rows = db.query_daily(days, provider, model, since, until)?;
     if json {
         let filtered = display::filter_daily_rows(&rows, show_all);
         println!("{}", serde_json::to_string_pretty(&filtered)?);
@@ -331,14 +386,18 @@ fn cmd_daily(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn cmd_weekly(
     db: &db::Database,
     weeks: u32,
     provider: Option<&str>,
+    model: Option<&str>,
+    since: Option<&str>,
+    until: Option<&str>,
     json: bool,
     show_all: bool,
 ) -> Result<()> {
-    let rows = db.query_weekly(weeks, provider)?;
+    let rows = db.query_weekly(weeks, provider, model, since, until)?;
     if json {
         let filtered = display::filter_daily_rows(&rows, show_all);
         println!("{}", serde_json::to_string_pretty(&filtered)?);
@@ -348,14 +407,18 @@ fn cmd_weekly(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn cmd_monthly(
     db: &db::Database,
     months: u32,
     provider: Option<&str>,
+    model: Option<&str>,
+    since: Option<&str>,
+    until: Option<&str>,
     json: bool,
     show_all: bool,
 ) -> Result<()> {
-    let rows = db.query_monthly(months, provider)?;
+    let rows = db.query_monthly(months, provider, model, since, until)?;
     if json {
         let filtered = display::filter_daily_rows(&rows, show_all);
         println!("{}", serde_json::to_string_pretty(&filtered)?);

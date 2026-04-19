@@ -96,7 +96,7 @@ impl Collector for AnthropicCollector {
                 .client
                 .get("https://api.anthropic.com/v1/organizations/usage_report/messages")
                 .header("x-api-key", &self.api_key)
-                .header("anthropic-version", "2023-06-01")
+                .header("anthropic-version", "2024-10-22")
                 .query(&query)
                 .send()
                 .await?;
