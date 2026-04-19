@@ -25,6 +25,10 @@ impl Database {
         queries::insert_record(&self.conn, record)
     }
 
+    pub fn max_recorded_at_millis(&self, provider: &str) -> Result<Option<i64>> {
+        queries::max_recorded_at_millis(&self.conn, provider)
+    }
+
     pub fn query_summary(
         &self,
         days: u32,

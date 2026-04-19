@@ -86,6 +86,7 @@ pub enum LocalCollectorState {
 pub fn get_collectors(
     cfg: &Config,
     provider_filter: Option<&str>,
+    db: Option<&crate::db::Database>,
 ) -> Result<Vec<Box<dyn Collector>>> {
     let provider_filter = provider_filter.map(canonical_provider_name);
     let mut collectors: Vec<Box<dyn Collector>> = Vec::new();
@@ -146,7 +147,10 @@ pub fn get_collectors(
     if should_include("opencode") {
         let db_path = opencode_db_path();
         if db_path.exists() {
-            collectors.push(Box::new(opencode::OpenCodeCollector::new()));
+            let watermark = db.and_then(|d| d.max_recorded_at_millis("opencode").ok().flatten());
+            collectors.push(Box::new(
+                opencode::OpenCodeCollector::new().with_watermark(watermark),
+            ));
         }
     }
 
