@@ -1,5 +1,5 @@
 use anyhow::Result;
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 
 use std::collections::BTreeMap;
 
@@ -26,6 +26,42 @@ pub fn insert_record(conn: &Connection, record: &UsageRecord) -> Result<()> {
         ],
     )?;
     Ok(())
+}
+
+/// Return the most recent `recorded_at` (as epoch milliseconds) for rows
+/// written by `provider`. Used as a watermark so local collectors can skip
+/// already-ingested history on every sync (issue #39).
+pub fn max_recorded_at_millis(conn: &Connection, provider: &str) -> Result<Option<i64>> {
+    let value: Option<String> = conn
+        .query_row(
+            "SELECT MAX(recorded_at) FROM usage_records WHERE provider = ?1",
+            params![provider],
+            |row| row.get::<_, Option<String>>(0),
+        )
+        .optional()?
+        .flatten();
+
+    let Some(s) = value else {
+        return Ok(None);
+    };
+
+    // recorded_at is written as either "%Y-%m-%dT%H:%M:%S" (local collectors)
+    // or as an RFC3339 / date-only string (API collectors). Try both.
+    if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(&s, "%Y-%m-%dT%H:%M:%S") {
+        return Ok(Some(dt.and_utc().timestamp_millis()));
+    }
+    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(&s) {
+        return Ok(Some(dt.timestamp_millis()));
+    }
+    if let Ok(date) = chrono::NaiveDate::parse_from_str(&s, "%Y-%m-%d") {
+        return Ok(Some(
+            date.and_hms_opt(0, 0, 0)
+                .unwrap()
+                .and_utc()
+                .timestamp_millis(),
+        ));
+    }
+    Ok(None)
 }
 
 pub fn query_summary(

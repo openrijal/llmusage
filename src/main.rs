@@ -316,7 +316,7 @@ async fn cmd_sync(
         }
     }
 
-    let providers = collectors::get_collectors(cfg, provider_filter)?;
+    let providers = collectors::get_collectors(cfg, provider_filter, Some(db))?;
 
     if providers.is_empty() {
         if let Some(filter) = provider_filter {
