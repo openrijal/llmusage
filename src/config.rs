@@ -18,6 +18,8 @@ pub struct Config {
     pub deepseek_api_key: Option<String>,
     #[serde(default)]
     pub ollama_host: Option<String>,
+    #[serde(default)]
+    pub ollama_enabled: bool,
     #[serde(default = "default_true")]
     pub claude_code_enabled: bool,
     #[serde(skip)]
@@ -61,6 +63,7 @@ pub fn load_config() -> Result<Config> {
             openrouter_api_key: None,
             deepseek_api_key: None,
             ollama_host: None,
+            ollama_enabled: false,
             claude_code_enabled: true,
             config_path: path.clone(),
         }
@@ -96,6 +99,7 @@ pub fn set_config_value(cfg: &Config, key: &str, value: &str) -> Result<()> {
         "openrouter_api_key" => cfg.openrouter_api_key = Some(value.to_string()),
         "deepseek_api_key" => cfg.deepseek_api_key = Some(value.to_string()),
         "ollama_host" => cfg.ollama_host = Some(value.to_string()),
+        "ollama_enabled" => cfg.ollama_enabled = value.parse()?,
         "claude_code_enabled" => cfg.claude_code_enabled = value.parse()?,
         "db_path" => cfg.db_path = value.to_string(),
         _ => anyhow::bail!("Unknown config key: {}", key),
@@ -144,7 +148,9 @@ pub fn print_config(cfg: &Config) {
     );
     println!(
         "  openrouter:   {}",
-        if cfg.openrouter_api_key.is_some() {
+        if env_var_present("OPENROUTER_API_KEY") {
+            "configured (env)".green()
+        } else if cfg.openrouter_api_key.is_some() {
             "configured".green()
         } else {
             "not set".dimmed()
@@ -152,24 +158,26 @@ pub fn print_config(cfg: &Config) {
     );
     println!(
         "  deepseek:     {}",
-        if cfg.deepseek_api_key.is_some() {
+        if env_var_present("DEEPSEEK_API_KEY") {
+            "configured (env)".green()
+        } else if cfg.deepseek_api_key.is_some() {
             "configured".green()
         } else {
             "not set".dimmed()
         }
     );
+    let ollama_host_display = cfg
+        .ollama_host
+        .clone()
+        .unwrap_or_else(|| "http://localhost:11434".to_string());
     println!(
         "  ollama:       {}",
-        if env_var_present("OLLAMA_HOST") {
-            "configured (env)".green()
-        } else if cfg.ollama_host.is_some() {
-            cfg.ollama_host
-                .as_deref()
-                .unwrap_or_default()
-                .to_string()
-                .green()
+        if !cfg.ollama_enabled {
+            "disabled (set ollama_enabled=true to include in sync)".dimmed()
+        } else if env_var_present("OLLAMA_HOST") {
+            format!("enabled (env: {})", ollama_host_display).green()
         } else {
-            "not set (default: http://localhost:11434)".dimmed()
+            format!("enabled ({})", ollama_host_display).green()
         }
     );
     println!(
@@ -191,6 +199,12 @@ fn apply_env_overrides(cfg: &mut Config) {
     }
     if let Some(value) = env_var_value("GEMINI_API_KEY") {
         cfg.gemini_api_key = Some(value);
+    }
+    if let Some(value) = env_var_value("OPENROUTER_API_KEY") {
+        cfg.openrouter_api_key = Some(value);
+    }
+    if let Some(value) = env_var_value("DEEPSEEK_API_KEY") {
+        cfg.deepseek_api_key = Some(value);
     }
     if let Some(value) = env_var_value("OLLAMA_HOST") {
         cfg.ollama_host = Some(value);
@@ -276,6 +290,7 @@ mod tests {
             openrouter_api_key: None,
             deepseek_api_key: None,
             ollama_host: Some("http://file-host".to_string()),
+            ollama_enabled: false,
             claude_code_enabled: true,
             config_path: PathBuf::from("config.toml"),
         };
@@ -300,6 +315,7 @@ mod tests {
             openrouter_api_key: None,
             deepseek_api_key: None,
             ollama_host: None,
+            ollama_enabled: false,
             claude_code_enabled: true,
             config_path: PathBuf::from("config.toml"),
         };
@@ -323,6 +339,7 @@ mod tests {
             openrouter_api_key: None,
             deepseek_api_key: None,
             ollama_host: None,
+            ollama_enabled: false,
             claude_code_enabled: true,
             config_path: path.clone(),
         };

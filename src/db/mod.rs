@@ -38,24 +38,33 @@ impl Database {
         &self,
         days: u32,
         provider: Option<&str>,
+        model: Option<&str>,
+        since: Option<&str>,
+        until: Option<&str>,
     ) -> Result<Vec<crate::models::DailyRow>> {
-        queries::query_daily(&self.conn, days, provider)
+        queries::query_daily(&self.conn, days, provider, model, since, until)
     }
 
     pub fn query_weekly(
         &self,
         weeks: u32,
         provider: Option<&str>,
+        model: Option<&str>,
+        since: Option<&str>,
+        until: Option<&str>,
     ) -> Result<Vec<crate::models::DailyRow>> {
-        queries::query_weekly(&self.conn, weeks, provider)
+        queries::query_weekly(&self.conn, weeks, provider, model, since, until)
     }
 
     pub fn query_monthly(
         &self,
         months: u32,
         provider: Option<&str>,
+        model: Option<&str>,
+        since: Option<&str>,
+        until: Option<&str>,
     ) -> Result<Vec<crate::models::DailyRow>> {
-        queries::query_monthly(&self.conn, months, provider)
+        queries::query_monthly(&self.conn, months, provider, model, since, until)
     }
 
     pub fn query_detail(
